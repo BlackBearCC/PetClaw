@@ -100,6 +100,13 @@ const BASE_METHODS = [
   "chat.history",
   "chat.abort",
   "chat.send",
+  // Pet engine
+  "pet.state.get",
+  "pet.interact",
+  "pet.growth.info",
+  "pet.persona.get",
+  "pet.persona.set",
+  "pet.config.get",
 ];
 
 export function listGatewayMethods(): string[] {
@@ -127,4 +134,6 @@ export const GATEWAY_EVENTS = [
   "exec.approval.requested",
   "exec.approval.resolved",
   GATEWAY_EVENT_UPDATE_AVAILABLE,
+  "pet.state",
+  "pet.event",
 ];
