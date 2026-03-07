@@ -28,14 +28,10 @@ function todayStr(): string {
 }
 
 function isYesterday(dateStr: string): boolean {
-  const d = new Date(dateStr);
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  return (
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  );
+  const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  return dateStr === yStr;
 }
 
 // ─── System ───

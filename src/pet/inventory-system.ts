@@ -237,7 +237,7 @@ export class InventorySystem {
         result.push({
           itemId: id,
           def,
-          quantity: Infinity,
+          quantity: -1,
           cooldownRemaining: this.getCooldown(id),
           canUse: this.canUse(id),
         });

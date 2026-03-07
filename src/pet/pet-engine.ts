@@ -80,8 +80,13 @@ export class PetEngine {
   constructor(options: PetEngineOptions) {
     this.bus = new EventBus();
 
+    // Level system (must init before attributes for offline decay params)
+    this.levels = new LevelSystem(this.bus, options.store);
+
     // Attributes (mood, hunger, health)
     this.attributes = new AttributeEngine(this.bus, options.store);
+    this.attributes.setDecayMultiplier(this.levels.decayMultiplier);
+    this.attributes.setMaxOfflineHours(this.levels.maxOfflineHours);
     const attrDefs = options.attributes ?? DEFAULT_ATTRIBUTES;
     for (const def of attrDefs) {
       this.attributes.register(def);
@@ -109,12 +114,6 @@ export class PetEngine {
     this.achievements = new AchievementSystem(
       this.bus, options.store, this.skills, this.growth,
     );
-
-    // Level system
-    this.levels = new LevelSystem(this.bus, options.store);
-
-    // Apply decay multiplier from level
-    this.attributes.setDecayMultiplier(this.levels.decayMultiplier);
 
     // Inventory
     this.inventory = new InventorySystem(
@@ -144,9 +143,10 @@ export class PetEngine {
 
     // ─── Cross-system wiring ───
 
-    // Level up → update decay multiplier + inventory capacity
+    // Level up → update decay multiplier, offline hours, inventory capacity
     this.bus.on("level:up", () => {
       this.attributes.setDecayMultiplier(this.levels.decayMultiplier);
+      this.attributes.setMaxOfflineHours(this.levels.maxOfflineHours);
       this.inventory.setCapacity(this.levels.inventoryCapacity);
     });
 

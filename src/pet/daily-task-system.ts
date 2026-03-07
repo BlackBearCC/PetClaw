@@ -132,7 +132,6 @@ interface DailyTaskState {
   date: string;
   tasks: DailyTask[];
   counters: DailyCounters;
-  moodAboveStartAt?: number;
 }
 
 const STORE_KEY = "daily-tasks";
@@ -174,7 +173,10 @@ export class DailyTaskSystem {
       this._date = saved.date ?? "";
       this._tasks = saved.tasks ?? [];
       this._counters = { ...this._emptyCounters(), ...saved.counters };
-      this._moodAboveStartAt = saved.moodAboveStartAt ?? 0;
+      // Reset mood_above timer if it was persisted — stale timestamps
+      // would include offline time in the duration calculation.
+      // The timer restarts on next tick when mood is above threshold.
+      this._moodAboveStartAt = 0;
     }
 
     // Wire up event listeners for counter tracking
@@ -435,7 +437,6 @@ export class DailyTaskSystem {
       date: this._date,
       tasks: this._tasks,
       counters: this._counters,
-      moodAboveStartAt: this._moodAboveStartAt,
     });
   }
 }

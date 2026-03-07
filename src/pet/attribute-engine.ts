@@ -90,6 +90,7 @@ export class AttributeEngine {
   private _store: PersistenceStore;
   private _bus: EventBus;
   private _decayMultiplier = 1.0;
+  private _maxOfflineHoursOverride: number | null = null;
 
   constructor(bus: EventBus, store: PersistenceStore) {
     this._bus = bus;
@@ -105,6 +106,11 @@ export class AttributeEngine {
     return this._decayMultiplier;
   }
 
+  /** Override max offline hours for all attributes (driven by pet level) */
+  setMaxOfflineHours(hours: number): void {
+    this._maxOfflineHoursOverride = hours;
+  }
+
   /** Register an attribute definition and restore its state */
   register(def: AttributeDef): void {
     const saved = this._store.load(def.key) as AttributeState | null;
@@ -114,12 +120,13 @@ export class AttributeEngine {
       value = saved.value;
       // Apply offline decay
       if (def.decayPerMinute > 0 && saved.updatedAt) {
+        const maxHours = this._maxOfflineHoursOverride ?? def.maxOfflineHours;
         const elapsedMin = Math.min(
           (Date.now() - saved.updatedAt) / 60_000,
-          def.maxOfflineHours * 60,
+          maxHours * 60,
         );
         const floor = def.offlineFloor ?? def.min;
-        value = Math.max(floor, value - elapsedMin * def.decayPerMinute);
+        value = Math.max(floor, value - elapsedMin * def.decayPerMinute * this._decayMultiplier);
       }
     }
 

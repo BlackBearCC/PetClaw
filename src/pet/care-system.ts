@@ -167,8 +167,24 @@ export class CareSystem {
 
   /** Use a healing item */
   heal(itemId: string): { ok: boolean; reason?: string; effects?: Record<string, number> } {
-    // Healing items are just inventory items with health effects
-    return this.feed(itemId);
+    if (this.isResting()) {
+      return { ok: false, reason: "pet_resting" };
+    }
+
+    const result = this._inventory.useItem(itemId);
+    if (!result) {
+      const cd = this._inventory.getCooldown(itemId);
+      if (cd > 0) {
+        return { ok: false, reason: "cooldown", effects: { cooldownRemaining: cd } };
+      }
+      return { ok: false, reason: "no_item" };
+    }
+
+    this._applyEffects(result.effects);
+    this._levels.gainExp(5, "heal");
+    this._bus.emit("care:action", { action: "heal", effects: result.effects });
+
+    return { ok: true, effects: result.effects };
   }
 
   /** Check and complete rest if time is up. Called from tick(). */
