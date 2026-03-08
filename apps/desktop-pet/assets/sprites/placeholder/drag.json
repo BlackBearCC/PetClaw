@@ -3,6 +3,7 @@
   "cols": 6,
   "totalFrames": 36,
   "fps": 8,
+  "type": "state",
   "sections": {
     "drag": [
       0,

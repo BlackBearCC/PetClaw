@@ -1,12 +1,13 @@
 {
   "frameSize": 960,
-  "cols": 6,
-  "totalFrames": 36,
-  "fps": 8,
+  "cols": 10,
+  "totalFrames": 60,
+  "fps": 12,
+  "type": "state",
   "sections": {
     "idle_breathing": [
       0,
-      35
+      59
     ]
   }
 }

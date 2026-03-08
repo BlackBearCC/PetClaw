@@ -3,6 +3,7 @@
   "cols": 10,
   "totalFrames": 60,
   "fps": 12,
+  "type": "action",
   "sections": {
     "happy": [
       0,

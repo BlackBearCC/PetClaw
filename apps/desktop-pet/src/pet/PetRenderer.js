@@ -46,8 +46,8 @@ export class PetRenderer {
     // 额外 spritesheet 映射：animationName → SpriteSheet
     this._extraSheets = new Map();
 
-    // idle 变体随机轮换：['idle', 'idle_2', 'idle_3', ...]
-    this._idleVariants = ['idle'];
+    // idle 变体随机轮换：['idle_breathing', 'idle_breathing_2', ...]
+    this._idleVariants = [];
     this._idleVariantTimer = null;
 
     // 复合动画（enter→loop→exit）：stateName → { enter, loop, exit? }
@@ -85,6 +85,19 @@ export class PetRenderer {
   }
 
   /**
+   * 注册单 sheet 复合动画（sheet 内含 enter/loop/exit 段）
+   * @param {string} stateName - 状态名（如 'sleep'）
+   * @param {import('./SpriteSheet').SpriteSheet} sheet - 含 enter/loop/exit 动画的单 sheet
+   */
+  registerCompoundSheet(stateName, sheet) {
+    const e = `${stateName}_enter`, l = `${stateName}_loop`, x = `${stateName}_exit`;
+    this._extraSheets.set(e, sheet);
+    this._extraSheets.set(l, sheet);
+    this._extraSheets.set(x, sheet);
+    this._compoundAnims.set(stateName, { enter: e, loop: l, exit: x });
+  }
+
+  /**
    * 注册 idle 变体（如 idle_2, idle_3），自动随机轮换
    * @param {string} name - 变体名（如 'idle_2'）
    * @param {import('./SpriteSheet').SpriteSheet} sheet
@@ -97,11 +110,9 @@ export class PetRenderer {
   }
 
   _pickRandomIdleVariant() {
-    const loaded = this._idleVariants.filter(v => {
-      if (v === 'idle') return this._getDefaultSheet()?.loaded;
-      return this._extraSheets.get(v)?.loaded;
-    });
-    if (loaded.length <= 1) return loaded[0] || 'idle';
+    const loaded = this._idleVariants.filter(v => this._extraSheets.get(v)?.loaded);
+    if (loaded.length === 0) return 'idle'; // fallback to default sheet's idle
+    if (loaded.length === 1) return loaded[0];
     return loaded[Math.floor(Math.random() * loaded.length)];
   }
 

@@ -37,7 +37,11 @@ export class SpriteSheet {
 
     const { frameSize, cols, fps, sections } = meta;
     const animations = {};
-    for (const [name, [start, end]] of Object.entries(sections)) {
+    // 复合状态（有 enter/loop/exit 段且有 name）：动画名加前缀 → sleep_enter, sleep_loop, sleep_exit
+    const isCompound = meta.type === 'state' && (sections.enter || sections.exit);
+    const prefix = (isCompound && meta.name) ? meta.name + '_' : '';
+
+    for (const [sectionName, [start, end]] of Object.entries(sections)) {
       const frames = [];
       for (let i = start; i <= end; i++) {
         frames.push({
@@ -47,7 +51,16 @@ export class SpriteSheet {
           h: frameSize,
         });
       }
-      animations[name] = { frames, fps, loop: name === 'loop' || name === 'idle' || /^idle_\d+$/.test(name) };
+      // type-based loop: state 的 loop 段及自定义名循环, enter/exit 不循环; action 不循环
+      let isLoop;
+      if (meta.type === 'action') {
+        isLoop = false;
+      } else if (meta.type === 'state') {
+        isLoop = sectionName !== 'enter' && sectionName !== 'exit';
+      } else {
+        isLoop = sectionName === 'loop' || sectionName === 'idle' || /^idle_breathing/.test(sectionName);
+      }
+      animations[prefix + sectionName] = { frames, fps, loop: isLoop };
     }
     return { ...meta, animations };
   }

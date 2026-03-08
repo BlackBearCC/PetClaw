@@ -50,11 +50,10 @@ class OpenClawPet {
     this.electronAPI = window.electronAPI || null;
 
     this.kittenSheet = new SpriteSheet();
-    this.idleSheet = new SpriteSheet();
+    this.idleBreathingSheet = new SpriteSheet();
+    this.idleBreathing2Sheet = new SpriteSheet();
     // 额外动画 spritesheets
-    this.sleepEnterSheet = new SpriteSheet();
-    this.sleepLoopSheet = new SpriteSheet();
-    this.sleepExitSheet = new SpriteSheet();
+    this.sleepSheet = new SpriteSheet();
     this.workEnterSheet = new SpriteSheet();
     this.workLoopSheet = new SpriteSheet();
     this.workExitSheet = new SpriteSheet();
@@ -69,7 +68,6 @@ class OpenClawPet {
     this.idleButterflySheet = new SpriteSheet();
     this.idleEarTwitchSheet = new SpriteSheet();
     this.idleYawnSheet = new SpriteSheet();
-    this.idle2Sheet = new SpriteSheet();
     this.chaseButterflySheet = new SpriteSheet();
     this.stateMachine = new StateMachine();
     this.skillSystem = new SkillSystem();
@@ -116,12 +114,8 @@ class OpenClawPet {
       await Promise.all([
         this.kittenSheet.load(spritePath + 'spritesheet-kitten.png', spritePath + 'spritesheet-kitten.json')
           .catch(() => console.warn('⚠️ Kitten spritesheet not found, using adult as fallback')),
-        this.sleepEnterSheet.load(spritePath + 'sleep_enter.png', spritePath + 'sleep_enter.json')
-          .catch(() => console.warn('⚠️ sleep_enter spritesheet not found')),
-        this.sleepLoopSheet.load(spritePath + 'sleep_loop.png', spritePath + 'sleep_loop.json')
-          .catch(() => console.warn('⚠️ sleep_loop spritesheet not found')),
-        this.sleepExitSheet.load(spritePath + 'sleep_exit.png', spritePath + 'sleep_exit.json')
-          .catch(() => console.warn('⚠️ sleep_exit spritesheet not found')),
+        this.sleepSheet.load(spritePath + 'sleep.png', spritePath + 'sleep.json')
+          .catch(() => console.warn('⚠️ sleep spritesheet not found')),
         this.workEnterSheet.load(spritePath + 'work_enter.png', spritePath + 'work_enter.json')
           .catch(() => console.warn('⚠️ work_enter spritesheet not found')),
         this.workLoopSheet.load(spritePath + 'work_loop.png', spritePath + 'work_loop.json')
@@ -150,10 +144,10 @@ class OpenClawPet {
           .catch(() => console.warn('⚠️ idle_ear_twitch spritesheet not found')),
         this.idleYawnSheet.load(spritePath + 'idle_yawn.png', spritePath + 'idle_yawn.json')
           .catch(() => console.warn('⚠️ idle_yawn spritesheet not found')),
-        this.idleSheet.load(spritePath + 'idle.png', spritePath + 'idle.json')
-          .catch(() => console.warn('⚠️ idle spritesheet not found')),
-        this.idle2Sheet.load(spritePath + 'idle_2.png', spritePath + 'idle_2.json')
-          .catch(() => console.warn('⚠️ idle_2 spritesheet not found')),
+        this.idleBreathingSheet.load(spritePath + 'idle_breathing.png', spritePath + 'idle_breathing.json')
+          .catch(() => console.warn('⚠️ idle_breathing spritesheet not found')),
+        this.idleBreathing2Sheet.load(spritePath + 'idle_breathing_2.png', spritePath + 'idle_breathing_2.json')
+          .catch(() => console.warn('⚠️ idle_breathing_2 spritesheet not found')),
         this.chaseButterflySheet.load(spritePath + 'chase_butterfly.png', spritePath + 'chase_butterfly.json')
           .catch(() => console.warn('⚠️ chase_butterfly spritesheet not found')),
       ]);
@@ -217,9 +211,7 @@ class OpenClawPet {
     this.renderer.setGrowthStage(1); // TODO: 测试阶段强制 stage=1 使用新 idle 精灵图
 
     // 3a. 注册额外 spritesheet 和复合动画
-    this.renderer.registerSheet('sleep_enter', this.sleepEnterSheet);
-    this.renderer.registerSheet('sleep_loop', this.sleepLoopSheet);
-    this.renderer.registerSheet('sleep_exit', this.sleepExitSheet);
+    this.renderer.registerCompoundSheet('sleep', this.sleepSheet);
     this.renderer.registerSheet('work_enter', this.workEnterSheet);
     this.renderer.registerSheet('work_loop', this.workLoopSheet);
     this.renderer.registerSheet('work_exit', this.workExitSheet);
@@ -234,9 +226,9 @@ class OpenClawPet {
     this.renderer.registerSheet('idle_butterfly', this.idleButterflySheet);
     this.renderer.registerSheet('idle_ear_twitch', this.idleEarTwitchSheet);
     this.renderer.registerSheet('idle_yawn', this.idleYawnSheet);
-    this.renderer.registerSheet('idle', this.idleSheet);
-    this.renderer.registerIdleVariant('idle_2', this.idle2Sheet);
-    this.renderer.registerCompound('sleep', 'sleep_enter', 'sleep_loop', 'sleep_exit');
+    this.renderer.registerIdleVariant('idle_breathing', this.idleBreathingSheet);
+    this.renderer.registerIdleVariant('idle_breathing_2', this.idleBreathing2Sheet);
+    // sleep compound already registered via registerCompoundSheet above
     this.renderer.registerCompound('work', 'work_enter', 'work_loop', 'work_exit');
     this.renderer.registerCompound('swing', 'swing_enter', 'swing_loop', 'swing_exit');
     this.renderer.registerSheet('chase_butterfly', this.chaseButterflySheet);
