@@ -37,6 +37,9 @@
  *   pet.daily.tasks         — get today's tasks
  *   pet.daily.claim         — claim completed task reward
  *   pet.daily.streak        — get login streak info
+ *   pet.shop.list           — get shop items with purchase limits
+ *   pet.shop.buy            — buy an item (deduct coins, check limits)
+ *   pet.wallet.info         — get star-coin balance & stats
  */
 
 import {
@@ -489,4 +492,29 @@ export const petHandlers: GatewayRequestHandlers = {
   },
 
   "pet.daily.streak": safeHandler((e) => e.login.getInfo()),
+
+  // ── Shop & Wallet ──
+
+  "pet.shop.list": safeHandler((e) => ({
+    items: e.shop.listShop(),
+    wallet: e.shop.getWallet(),
+  })),
+
+  "pet.shop.buy": ({ params, respond }) => {
+    const itemId = params?.itemId as string;
+    if (!itemId) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'itemId' param"));
+      return;
+    }
+    try {
+      const e = getEngine();
+      const qty = (params?.qty as number) ?? 1;
+      const result = e.shop.buy(itemId, qty);
+      (respond as Function)(result.ok, { ...result, state: e.getState() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "pet.wallet.info": safeHandler((e) => e.shop.getWallet()),
 };

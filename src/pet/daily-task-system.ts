@@ -12,6 +12,7 @@ import type { PersistenceStore } from "./attribute-engine.js";
 import type { AttributeEngine } from "./attribute-engine.js";
 import type { LevelSystem } from "./level-system.js";
 import type { InventorySystem } from "./inventory-system.js";
+import type { ShopSystem } from "./shop-system.js";
 
 // ─── Types ───
 
@@ -23,6 +24,7 @@ export interface TaskCondition {
 
 export interface TaskReward {
   exp: number;
+  coins: number;
   items: Array<{ id: string; qty: number }>;
 }
 
@@ -68,10 +70,10 @@ const DIFFICULTY_TIERS: DifficultyTier[] = [
       { type: "click_count", threshold: 5 },
     ],
     rewardPool: [
-      { exp: 8,  items: [] },
-      { exp: 5,  items: [{ id: "babel_fish_can", qty: 1 }] },
-      { exp: 10, items: [] },
-      { exp: 6,  items: [{ id: "babel_fish_can", qty: 1 }] },
+      { exp: 8,  coins: 12, items: [] },
+      { exp: 5,  coins: 10, items: [{ id: "babel_fish_can", qty: 1 }] },
+      { exp: 10, coins: 15, items: [] },
+      { exp: 6,  coins: 10, items: [{ id: "babel_fish_can", qty: 1 }] },
     ],
   },
   {
@@ -85,11 +87,11 @@ const DIFFICULTY_TIERS: DifficultyTier[] = [
       { type: "mood_above", threshold: 70, duration_min: 30 },
     ],
     rewardPool: [
-      { exp: 15, items: [] },
-      { exp: 10, items: [{ id: "babel_fish_can", qty: 2 }] },
-      { exp: 12, items: [{ id: "dont_panic", qty: 1 }] },
-      { exp: 18, items: [] },
-      { exp: 10, items: [{ id: "marvin_patch", qty: 1 }] },
+      { exp: 15, coins: 25, items: [] },
+      { exp: 10, coins: 20, items: [{ id: "babel_fish_can", qty: 2 }] },
+      { exp: 12, coins: 22, items: [{ id: "dont_panic", qty: 1 }] },
+      { exp: 18, coins: 30, items: [] },
+      { exp: 10, coins: 20, items: [{ id: "marvin_patch", qty: 1 }] },
     ],
   },
   {
@@ -102,11 +104,11 @@ const DIFFICULTY_TIERS: DifficultyTier[] = [
       { type: "achievement_unlock", threshold: 1 },
     ],
     rewardPool: [
-      { exp: 25, items: [{ id: "gargle_blaster", qty: 1 }] },
-      { exp: 20, items: [{ id: "babel_fish_can", qty: 3 }] },
-      { exp: 30, items: [] },
-      { exp: 20, items: [{ id: "dont_panic", qty: 2 }] },
-      { exp: 25, items: [{ id: "marvin_patch", qty: 1 }, { id: "babel_fish_can", qty: 1 }] },
+      { exp: 25, coins: 45, items: [{ id: "gargle_blaster", qty: 1 }] },
+      { exp: 20, coins: 50, items: [{ id: "babel_fish_can", qty: 3 }] },
+      { exp: 30, coins: 60, items: [] },
+      { exp: 20, coins: 40, items: [{ id: "dont_panic", qty: 2 }] },
+      { exp: 25, coins: 45, items: [{ id: "marvin_patch", qty: 1 }, { id: "babel_fish_can", qty: 1 }] },
     ],
   },
 ];
@@ -148,6 +150,7 @@ export class DailyTaskSystem {
   private _attributes: AttributeEngine;
   private _levels: LevelSystem;
   private _inventory: InventorySystem;
+  private _shop: ShopSystem | null = null;
   private _tasks: DailyTask[] = [];
   private _counters: DailyCounters;
   private _date: string = "";
@@ -196,6 +199,11 @@ export class DailyTaskSystem {
     });
   }
 
+  /** Wire up shop system (called after construction to avoid circular deps) */
+  setShopSystem(shop: ShopSystem): void {
+    this._shop = shop;
+  }
+
   /** Set LLM callback for generating task descriptions */
   setLLMCallback(callback: TaskLLMCallback): void {
     this._llmCallback = callback;
@@ -233,6 +241,11 @@ export class DailyTaskSystem {
 
     // Award EXP
     this._levels.gainExp(task.reward.exp, "daily_task");
+
+    // Award coins
+    if (task.reward.coins > 0 && this._shop) {
+      this._shop.earnCoins(task.reward.coins, "daily_task");
+    }
 
     // Award items
     for (const item of task.reward.items) {

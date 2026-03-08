@@ -29,7 +29,7 @@ export type PetEventMap = {
   /** Daily task completed */
   'daily:task-complete': { taskId: string; difficulty: string };
   /** Daily task reward claimed */
-  'daily:task-claim': { taskId: string; reward: { exp: number; items: Array<{ id: string; qty: number }> } };
+  'daily:task-claim': { taskId: string; reward: { exp: number; coins: number; items: Array<{ id: string; qty: number }> } };
   /** Care action performed */
   'care:action': { action: string; effects: Record<string, number> };
   /** Rest started */
@@ -38,6 +38,10 @@ export type PetEventMap = {
   'care:rest-end': { type: string; effects: Record<string, number> };
   /** Login streak updated */
   'login:streak': { streak: number; date: string };
+  /** Coins earned */
+  'shop:coin-earn': { amount: number; source: string; balance: number };
+  /** Item purchased from shop */
+  'shop:buy': { itemId: string; qty: number; totalCost: number; balance: number };
 };
 
 type EventHandler<T> = (data: T) => void;

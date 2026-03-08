@@ -24,6 +24,7 @@ import { CareSystem } from "./care-system.js";
 import { ChatEvalSystem } from "./chat-eval-system.js";
 import { LoginTracker } from "./login-tracker.js";
 import { DailyTaskSystem } from "./daily-task-system.js";
+import { ShopSystem } from "./shop-system.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -74,6 +75,7 @@ export class PetEngine {
   readonly chatEval: ChatEvalSystem;
   readonly login: LoginTracker;
   readonly dailyTasks: DailyTaskSystem;
+  readonly shop: ShopSystem;
 
   private _passiveAcc: number = 0;
 
@@ -141,13 +143,24 @@ export class PetEngine {
       this.attributes, this.levels, this.inventory,
     );
 
+    // Shop (wallet + store)
+    this.shop = new ShopSystem(
+      this.bus, options.store,
+      this.inventory, this.levels,
+    );
+
+    // Wire shop into daily tasks (for coin rewards)
+    this.dailyTasks.setShopSystem(this.shop);
+
     // ─── Cross-system wiring ───
 
-    // Level up → update decay multiplier, offline hours, inventory capacity
-    this.bus.on("level:up", () => {
+    // Level up → update decay multiplier, offline hours, inventory capacity, coin bonus
+    this.bus.on("level:up", ({ level }) => {
       this.attributes.setDecayMultiplier(this.levels.decayMultiplier);
       this.attributes.setMaxOfflineHours(this.levels.maxOfflineHours);
       this.inventory.setCapacity(this.levels.inventoryCapacity);
+      // Award coins: 20 × current level (design doc §9.1)
+      this.shop.earnCoins(20 * level, "level_up");
     });
 
     // Growth stage up → award bonus EXP
@@ -155,6 +168,12 @@ export class PetEngine {
       const bonuses = [0, 100, 200, 500];
       const bonus = bonuses[stage] ?? 0;
       if (bonus > 0) this.levels.gainExp(bonus, "growth_stage_up");
+    });
+
+    // Login streak → award coins: 5 × N (capped at 50)
+    this.bus.on("login:streak", ({ streak }) => {
+      const coins = Math.min(50, 5 * streak);
+      this.shop.earnCoins(coins, "login_streak");
     });
   }
 
@@ -234,6 +253,7 @@ export class PetEngine {
       },
       login: this.login.getInfo(),
       resting: this.care.getRestStatus(),
+      wallet: this.shop.getWallet(),
     };
   }
 
@@ -316,6 +336,11 @@ export interface PetState {
     type?: string;
     endsAt?: number;
     remainingMs?: number;
+  };
+  wallet: {
+    coins: number;
+    totalEarned: number;
+    totalSpent: number;
   };
 }
 

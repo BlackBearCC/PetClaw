@@ -38,6 +38,14 @@ export {
 } from "./chat-eval-system.js";
 export { LoginTracker } from "./login-tracker.js";
 export {
+  ShopSystem,
+  SHOP_CATALOG,
+  type ShopItemDef,
+  type WalletInfo,
+  type ShopListItem,
+  type BuyResult,
+} from "./shop-system.js";
+export {
   DailyTaskSystem,
   type DailyTask,
   type TaskCondition,

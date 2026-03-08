@@ -2698,3 +2698,132 @@ html, body {
   color: var(--ink-light);
   font-style: italic;
 }
+
+/* ═══════════════ Shop Tab ═══════════════ */
+
+.nur-shop-wallet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 215, 0, 0.12);
+  border: 1.5px dashed rgba(255, 180, 0, 0.4);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.nur-coin-icon {
+  font-size: 16px;
+}
+
+.nur-coin-balance {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d4a017;
+}
+
+.nur-coin-label {
+  font-size: 11px;
+  color: var(--ink-light);
+}
+
+.nur-shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nur-shop-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--paper-card);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  transition: box-shadow 0.15s;
+}
+
+.nur-shop-card:not(.nur-disabled):hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.nur-shop-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nur-shop-icon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.nur-shop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nur-shop-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nur-shop-limit {
+  font-size: 10px;
+  color: var(--ink-light);
+}
+
+.nur-shop-reason {
+  font-size: 10px;
+  color: #c0392b;
+  font-style: italic;
+}
+
+.nur-shop-price {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #d4a017;
+  white-space: nowrap;
+}
+
+.nur-shop-buy {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: linear-gradient(135deg, #f0c040, #e0a020);
+  color: #fff;
+  border: 1.5px solid #c89020;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.nur-shop-buy:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(200, 144, 32, 0.4);
+}
+
+.nur-shop-buy:active {
+  transform: scale(0.97);
+}
+
+.nur-shop-card.nur-disabled {
+  opacity: 0.5;
+}
+
+.nur-shop-card.nur-disabled .nur-shop-price {
+  color: var(--ink-light);
+}

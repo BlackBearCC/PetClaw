@@ -1,12 +1,13 @@
 /**
  * NurturingPanel.js
- * 养成面板 — 背包 / 每日任务 / 养护
+ * 养成面板 — 背包 / 每日任务 / 养护 / 商城
  *
  * 通过 petRPC 调用服务端:
  *   pet.inventory.list / pet.inventory.use
  *   pet.daily.tasks / pet.daily.claim / pet.daily.streak
  *   pet.care.feed / pet.care.play / pet.care.heal / pet.care.rest
- *   pet.level.info
+ *   pet.level.info / pet.wallet.info
+ *   pet.shop.list / pet.shop.buy
  */
 
 const ICON_BASE = '../assets/icons';
@@ -82,6 +83,7 @@ export class NurturingPanel {
         <button class="nur-tab active" data-tab="inventory">🎒 背包</button>
         <button class="nur-tab" data-tab="tasks">📋 任务</button>
         <button class="nur-tab" data-tab="care">💗 养护</button>
+        <button class="nur-tab" data-tab="shop">🪙 商城</button>
       </div>
       <div class="nur-body">
         <div class="nur-loading">加载中...</div>
@@ -140,6 +142,7 @@ export class NurturingPanel {
       if (this._activeTab === 'inventory') await this._renderInventory(body);
       else if (this._activeTab === 'tasks') await this._renderTasks(body);
       else if (this._activeTab === 'care') await this._renderCare(body);
+      else if (this._activeTab === 'shop') await this._renderShop(body);
     } catch (err) {
       console.error('[nurturing] render error:', err);
       body.innerHTML = `<div class="nur-empty">加载失败: ${this._esc(String(err?.message || err))}</div>`;
@@ -322,6 +325,7 @@ export class NurturingPanel {
     if (!reward) return '';
     const parts = [];
     if (reward.exp) parts.push(`+${reward.exp} EXP`);
+    if (reward.coins) parts.push(`+${reward.coins} 🪙`);
     if (reward.items?.length) {
       for (const ri of reward.items) {
         parts.push(`${ri.id} ×${ri.qty}`);
@@ -429,6 +433,81 @@ export class NurturingPanel {
     } catch {
       this._onBubble('出了点问题...');
     }
+  }
+
+  // ───────────────── Shop Tab ─────────────────
+
+  async _renderShop(body) {
+    try {
+      const data = await this._rpc('pet.shop.list');
+      const items = data?.items || [];
+      const wallet = data?.wallet || { coins: 0 };
+
+      const cards = items.map(item => {
+        const icon = ITEM_ICONS[item.id] || '';
+        const disabled = !item.canBuy;
+        const limitStr = this._shopLimitStr(item);
+
+        return `
+          <div class="nur-shop-card ${disabled ? 'nur-disabled' : ''}" data-item-id="${item.id}">
+            <div class="nur-shop-icon">
+              ${icon ? `<img src="${icon}" alt="${this._esc(item.id)}">` : '<span>📦</span>'}
+            </div>
+            <div class="nur-shop-info">
+              <div class="nur-shop-name">${this._esc(item.id)}</div>
+              <div class="nur-shop-limit">${limitStr}</div>
+              ${disabled && item.reason ? `<div class="nur-shop-reason">${this._esc(item.reason)}</div>` : ''}
+            </div>
+            <div class="nur-shop-price">
+              <span class="nur-coin-icon">🪙</span> ${item.price}
+            </div>
+            ${!disabled ? `<button class="nur-shop-buy" data-item-id="${item.id}">购买</button>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <div class="nur-shop-wallet">
+          <span class="nur-coin-icon">🪙</span>
+          <span class="nur-coin-balance">${wallet.coins}</span>
+          <span class="nur-coin-label">星币</span>
+        </div>
+        <div class="nur-shop-list">${cards}</div>
+      `;
+
+      body.querySelectorAll('.nur-shop-buy').forEach(btn => {
+        btn.onclick = () => this._buyItem(btn.dataset.itemId);
+      });
+    } catch (err) {
+      console.error('[nurturing] shop error:', err);
+      body.innerHTML = `<div class="nur-empty">商城加载失败<br><small>${this._esc(String(err?.message || err))}</small></div>`;
+    }
+  }
+
+  async _buyItem(itemId) {
+    try {
+      const result = await this._rpc('pet.shop.buy', { itemId, qty: 1 });
+      if (result?.ok) {
+        const bal = result.wallet?.coins ?? '?';
+        this._onBubble(`买到了！剩余 ${bal} 🪙`);
+      } else {
+        this._onBubble(result?.reason || '买不了...');
+      }
+      await this._refresh();
+    } catch {
+      this._onBubble('购买失败...');
+    }
+  }
+
+  _shopLimitStr(item) {
+    const parts = [];
+    if (item.dailyLimit > 0) {
+      parts.push(`今日 ${item.todayBought}/${item.dailyLimit}`);
+    }
+    if (item.weeklyLimit) {
+      parts.push(`本周 ${item.weekBought}/${item.weeklyLimit}`);
+    }
+    return parts.join(' · ') || '不限购';
   }
 
   // ───────────────── Util ─────────────────
