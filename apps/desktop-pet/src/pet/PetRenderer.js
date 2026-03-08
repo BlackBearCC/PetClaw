@@ -318,7 +318,14 @@ export class PetRenderer {
     if (this._growthStage === 0 && this.spriteSheetKitten?.loaded) {
       return this.spriteSheetKitten;
     }
-    return this._extraSheets.get('idle') || null;
+    const idleSheet = this._extraSheets.get('idle');
+    if (idleSheet?.loaded) return idleSheet;
+    // Fallback: 使用第一个已加载的 idle 变体
+    for (const v of this._idleVariants) {
+      const s = this._extraSheets.get(v);
+      if (s?.loaded) return s;
+    }
+    return null;
   }
 
   /** 获取当前动画使用的 spritesheet */
@@ -420,6 +427,7 @@ export class PetRenderer {
    */
   _updateFrame(deltaMs) {
     const sheet = this._getActiveSheet();
+    if (!sheet) return;
     const fps = sheet.getFPS(this.currentAnimation);
     const frameDuration = 1000 / fps;
     const anim = sheet.getAnimation(this.currentAnimation);
