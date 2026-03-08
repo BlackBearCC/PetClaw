@@ -81,6 +81,7 @@ export class MemoryGraphPanel {
   open() {
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
     this._closeDetail();
     this._resizeCanvas();
     this._rebuildLayout();
@@ -92,9 +93,15 @@ export class MemoryGraphPanel {
     this.isOpen = false;
     this.element.classList.remove('open');
     this._stopRender();
+    this.onStateChange?.();
   }
 
-  closeQuiet() { this.close(); }
+  closeQuiet() {
+    if (!this.isOpen) return;
+    this.isOpen = false;
+    this.element.classList.remove('open');
+    this._stopRender();
+  }
 
   toggle() {
     if (this.isOpen) this.close();

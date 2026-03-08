@@ -55,6 +55,7 @@ export class SkillPanel {
   async open() {
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
     await this._loadAndRender();
   }
 
@@ -62,10 +63,12 @@ export class SkillPanel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.element.classList.remove('open');
+    this.onStateChange?.();
   }
 
   closeQuiet() {
-    this.close();
+    this.isOpen = false;
+    this.element.classList.remove('open');
   }
 
   toggle() {
@@ -361,6 +364,7 @@ export class SkillPanel {
   async openToLearning() {
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
     await this._switchTab('learning');
   }
 

@@ -140,6 +140,7 @@ export class SettingsPanel {
     if (this.isOpen) return;
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
 
     if (this.electronAPI?.getConfig) {
       try {
@@ -291,10 +292,12 @@ export class SettingsPanel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.element.classList.remove('open');
+    this.onStateChange?.();
   }
 
   closeQuiet() {
-    this.close();
+    this.isOpen = false;
+    this.element.classList.remove('open');
   }
 
   destroy() {

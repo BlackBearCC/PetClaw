@@ -481,6 +481,14 @@ class OpenClawPet {
       this.chatPanel.setMemoryGraph(this.memoryGraph);
     }
 
+    // 6i-2. 面板状态变更 → 动态缩放窗口
+    const syncWin = () => this._syncWindowSize();
+    this.chatPanel.onStateChange = syncWin;
+    this.settingsPanel.onStateChange = syncWin;
+    this.skillPanel.onStateChange = syncWin;
+    if (this.nurturingPanel) this.nurturingPanel.onStateChange = syncWin;
+    if (this.memoryGraphPanel) this.memoryGraphPanel.onStateChange = syncWin;
+
     // 6j. 工作区感知
     this.workspaceWatcher = new WorkspaceWatcher();
     this.workspaceWatcher.onChange((info) => {
@@ -673,6 +681,41 @@ class OpenClawPet {
       this.bubble.show(msgs[Math.floor(Math.random() * msgs.length)], 5000);
       this.stateMachine.transition('sad', { force: true, duration: 2000 });
     }, 5 * 60 * 1000);
+  }
+
+  /** 面板打开/关闭时动态缩放窗口（防抖，避免连续 close+open 闪烁） */
+  _syncWindowSize() {
+    clearTimeout(this._syncWindowTimer);
+    this._syncWindowTimer = setTimeout(() => this._doSyncWindowSize(), 0);
+  }
+
+  async _doSyncWindowSize() {
+    if (!this.electronAPI) return;
+    const panels = [this.chatPanel, this.settingsPanel, this.skillPanel, this.memoryGraphPanel, this.nurturingPanel];
+    const anyOpen = panels.some(p => p?.isOpen);
+
+    if (!anyOpen) {
+      document.body.classList.remove('panels-right');
+      this._panelSide = null;
+      this.electronAPI.expandWindow(false, this._lastPanelSide || 'left');
+      this._lastPanelSide = null;
+      return;
+    }
+
+    // 已展开且方向未变 → 跳过
+    if (this._panelSide) return;
+
+    try {
+      const pos = await this.electronAPI.getWindowPosition();
+      const PANEL_W = 316; // 596 - 280
+      const side = pos.x >= PANEL_W ? 'left' : 'right';
+      document.body.classList.toggle('panels-right', side === 'right');
+      this._panelSide = side;
+      this._lastPanelSide = side;
+      this.electronAPI.expandWindow(true, side);
+    } catch {
+      this.electronAPI.expandWindow(true, 'left');
+    }
   }
 
   /** 菜单关闭后恢复穿透状态（交给下一次 mousemove 精确判断） */

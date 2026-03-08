@@ -101,6 +101,7 @@ export class NurturingPanel {
   async open() {
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
     await this._refresh();
   }
 
@@ -108,9 +109,13 @@ export class NurturingPanel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.element.classList.remove('open');
+    this.onStateChange?.();
   }
 
-  closeQuiet() { this.close(); }
+  closeQuiet() {
+    this.isOpen = false;
+    this.element.classList.remove('open');
+  }
 
   toggle() {
     if (this.isOpen) this.close();

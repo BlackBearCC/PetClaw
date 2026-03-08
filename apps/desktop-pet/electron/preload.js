@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getScreenSize: () => ipcRenderer.invoke('get-screen-size'),
 
   // === 窗口展开/收缩 ===
-  expandWindow: (expand, customSize) => ipcRenderer.send('expand-window', expand, customSize),
+  expandWindow: (expand, side) => ipcRenderer.send('expand-window', expand, side),
 
   // === 应用控制 ===
   appQuit: () => ipcRenderer.send('app-quit'),

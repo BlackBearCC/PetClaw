@@ -1516,6 +1516,31 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ===== 面板右侧展开（宠物在屏幕左侧时） ===== */
+body.panels-right #app-container {
+  justify-content: flex-start;
+}
+body.panels-right #chat-panel,
+body.panels-right #settings-panel,
+body.panels-right #skill-panel,
+body.panels-right #memory-graph-panel,
+body.panels-right #nurturing-panel {
+  right: auto;
+  left: 260px;
+  transform: scale(0.8) translateX(-20px);
+}
+body.panels-right #chat-panel.open,
+body.panels-right #settings-panel.open,
+body.panels-right #skill-panel.open,
+body.panels-right #memory-graph-panel.open,
+body.panels-right #nurturing-panel.open {
+  transform: scale(1) translateX(0);
+}
+body.panels-right .md-panel {
+  right: auto;
+  left: 570px;
+}
+
 /* ===== 动画 ===== */
 @keyframes petAppear {
   from { opacity: 0; transform: scale(0.5) translateY(20px); }

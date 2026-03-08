@@ -373,6 +373,7 @@ export class ChatPanel {
     if (this.isOpen) return;
     this.isOpen = true;
     this.element.classList.add('open');
+    this.onStateChange?.();
     setTimeout(() => this.inputEl.focus(), 100);
   }
 
@@ -380,10 +381,12 @@ export class ChatPanel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.element.classList.remove('open');
+    this.onStateChange?.();
   }
 
   closeQuiet() {
-    this.close();
+    this.isOpen = false;
+    this.element.classList.remove('open');
   }
 
   toggle() {

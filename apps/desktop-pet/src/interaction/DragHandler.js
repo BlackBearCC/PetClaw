@@ -85,15 +85,17 @@ export class DragHandler {
         const pos = await this.electronAPI.getWindowPosition();
         const screen = await this.electronAPI.getScreenSize();
         const SNAP = 30;
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
         let snapped = null;
         let snapX = pos.x;
         let snapY = pos.y;
 
         if (pos.x <= SNAP) { snapX = 0; snapped = 'left'; }
-        else if (pos.x + 200 >= screen.width - SNAP) { snapX = screen.width - 200; snapped = 'right'; }
+        else if (pos.x + winW >= screen.width - SNAP) { snapX = screen.width - winW; snapped = 'right'; }
 
         if (pos.y <= SNAP) { snapY = 0; snapped = snapped || 'top'; }
-        else if (pos.y + 250 >= screen.height - SNAP) { snapY = screen.height - 250; snapped = snapped || 'bottom'; }
+        else if (pos.y + winH >= screen.height - SNAP) { snapY = screen.height - winH; snapped = snapped || 'bottom'; }
 
         if (snapped) {
           this.electronAPI.moveWindow(snapX - pos.x, snapY - pos.y);
