@@ -11,8 +11,8 @@
 export class DragHandler {
   /**
    * @param {HTMLElement} element - 拖拽触发元素（canvas）
-   * @param {import('../pet/StateMachine').StateMachine} stateMachine
-   * @param {import('../pet/Behaviors').Behaviors} behaviors
+   * @param {import('../character/StateMachine').StateMachine} stateMachine
+   * @param {import('../character/Behaviors').Behaviors} behaviors
    * @param {object} electronAPI - preload 暴露的 Electron API
    */
   constructor(element, stateMachine, behaviors, electronAPI) {

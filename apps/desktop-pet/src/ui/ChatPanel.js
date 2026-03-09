@@ -8,7 +8,7 @@
 export class ChatPanel {
   /**
    * @param {object} electronAPI - preload 暴露的 API
-   * @param {import('../pet/StateMachine').StateMachine} stateMachine
+   * @param {import('../character/StateMachine').StateMachine} stateMachine
    * @param {import('./Bubble').Bubble} bubble
    */
   constructor(electronAPI, stateMachine, bubble) {

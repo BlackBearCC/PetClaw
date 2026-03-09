@@ -12,7 +12,7 @@ export class BottomChatInput {
   /**
    * @param {HTMLElement} petArea - #pet-area
    * @param {object} electronAPI
-   * @param {import('../pet/StateMachine').StateMachine} stateMachine
+   * @param {import('../character/StateMachine').StateMachine} stateMachine
    * @param {import('./StreamingBubble').StreamingBubble} streamingBubble
    * @param {import('./MarkdownPanel').MarkdownPanel} [markdownPanel]
    */

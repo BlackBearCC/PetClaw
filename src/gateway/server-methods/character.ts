@@ -197,6 +197,12 @@ let tickInterval: ReturnType<typeof setInterval> | null = null;
 let hooksRegistered = false;
 
 /**
+ * Per-session cache of the last user message, used to pair with
+ * the subsequent message:sent hook for memory extraction.
+ */
+const lastUserMessageBySession = new Map<string, string>();
+
+/**
  * Register OpenClaw hooks for character engine integration.
  * - agent:bootstrap — inject CHARACTER_STATE.md into agent context
  * - after_tool_call — auto-record tool usage for skill tracking (all channels)
@@ -218,6 +224,27 @@ function registerCharacterHooks(eng: CharacterEngine): void {
       content,
       missing: false,
     });
+  });
+
+  // ── message:received — cache user message for memory extraction pairing ──
+  registerInternalHook("message:received", (event) => {
+    const ctx = event.context as { content?: string };
+    if (ctx.content && event.sessionKey) {
+      lastUserMessageBySession.set(event.sessionKey, ctx.content);
+    }
+  });
+
+  // ── message:sent — auto-trigger memory extraction across all channels ──
+  registerInternalHook("message:sent", (event) => {
+    const ctx = event.context as { content?: string; success?: boolean };
+    if (!ctx.success || !ctx.content || !engine) return;
+
+    const userMsg = lastUserMessageBySession.get(event.sessionKey) ?? "";
+    lastUserMessageBySession.delete(event.sessionKey);
+
+    if (userMsg || ctx.content) {
+      engine.memoryGraph.enqueueExtraction(userMsg, ctx.content);
+    }
   });
 
   // ── after_tool_call — auto-record tool usage across all channels ──

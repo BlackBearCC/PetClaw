@@ -6,8 +6,8 @@
 export class ClickHandler {
   /**
    * @param {HTMLElement} element
-   * @param {import('../pet/StateMachine').StateMachine} stateMachine
-   * @param {import('../pet/Behaviors').Behaviors} behaviors
+   * @param {import('../character/StateMachine').StateMachine} stateMachine
+   * @param {import('../character/Behaviors').Behaviors} behaviors
    * @param {object} options
    */
   constructor(element, stateMachine, behaviors, options = {}) {
