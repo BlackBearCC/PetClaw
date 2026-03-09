@@ -278,7 +278,7 @@ class OpenClawPet {
     // 6b. 文件拖拽分析（需在 bubble/chatPanel 初始化之后）
     this.fileDropHandler = new FileDropHandler(
       this.canvas, this.electronAPI, this.stateMachine, this.bubble,
-      this.chatPanel, this.intimacySystem
+      this.chatPanel, this.petSync
     );
 
     // 6d. 边缘反应
@@ -322,7 +322,7 @@ class OpenClawPet {
     // 6h. 技能系统（工具熟练度 + 领悟积累）
     this.skillSystem.onUnlock(({ toolName, stars, isNew }) => {
       const gain = isNew ? 5 : stars === 3 ? 15 : 8;
-      this.intimacySystem.gain(gain);
+      this.petSync.interact('skill_unlock', { intimacy: gain });
       const msgs = isNew
         ? [`解锁了新技能：${toolName}！✨`, `喵！${toolName} 好厉害！`]
         : [`${toolName} 越用越熟练了！${'★'.repeat(stars)}`, `${toolName} 升星啦！喵～`];
@@ -345,7 +345,7 @@ class OpenClawPet {
     this.achievementSystem.onUnlock((ach) => {
       this.bubble.show(`🏆 成就解锁：${ach.name}！${ach.icon}`, 4000);
       this.stateMachine.transition('happy', { force: true, duration: 3000 });
-      if (ach.intimacyBonus > 0) this.intimacySystem.gain(ach.intimacyBonus);
+      if (ach.intimacyBonus > 0) this.petSync.interact('achievement', { intimacy: ach.intimacyBonus });
     });
     this.achievementSystem.setContext({
       miniCatSystem: this.miniCatSystem,
@@ -376,8 +376,7 @@ class OpenClawPet {
       bubble: this.bubble,
       markdownPanel: this.markdownPanel,
       stateMachine: this.stateMachine,
-      moodSystem: this.moodSystem,
-      intimacySystem: this.intimacySystem,
+      petSync: this.petSync,
       electronAPI: this.electronAPI,
       choiceUI: this.learningChoiceUI,
     });
