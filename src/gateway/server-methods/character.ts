@@ -49,8 +49,8 @@ import {
   type CharacterEngine,
   type PersistenceStore,
   inferDomainFromText,
-  type SoulAction,
 } from "../../character/index.js";
+import type { CronService } from "../../cron/service.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import {
   registerInternalHook,
@@ -198,6 +198,8 @@ let engine: CharacterEngine | null = null;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 let hooksRegistered = false;
 let _broadcast: GatewayBroadcastFn | null = null;
+let _cron: CronService | null = null;
+let cronJobsRegistered = false;
 
 /**
  * Per-session cache of the last user message, used to pair with
@@ -269,14 +271,50 @@ function registerCharacterHooks(eng: CharacterEngine): void {
     }
   });
 
-  // ── message:sent — auto-trigger memory extraction across all channels ──
+  // ── message:sent — memory extraction + capture internal agent output ──
   registerInternalHook("message:sent", (event) => {
     const ctx = event.context as { content?: string; success?: boolean };
     if (!ctx.success || !ctx.content || !engine) return;
 
+    const content = ctx.content.trim();
+    const sk = event.sessionKey ?? "";
+
+    // Soul Agent output → broadcast as proactive character speech
+    if (sk.includes("soul-agent")) {
+      if (content && content !== "HEARTBEAT_OK" && _broadcast) {
+        _broadcast("character", { kind: "soul-action", type: "speak", text: content }, { dropIfSlow: true });
+        engine.bus.emit("soul:action", { type: "speak", text: content });
+      }
+      return;
+    }
+
+    // World Agent output → parse JSON world event
+    if (sk.includes("world-agent")) {
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[0]) as {
+            id?: string; type?: string; title?: string; desc?: string;
+            rewards?: { coins?: number; exp?: number };
+          };
+          if (parsed.id && parsed.type && parsed.title && parsed.desc) {
+            engine.worldEvents.addEvent({
+              id: parsed.id,
+              type: parsed.type as "milestone" | "skill_unlock" | "holiday" | "quest",
+              title: parsed.title,
+              desc: parsed.desc,
+              rewards: parsed.rewards,
+            });
+          }
+        } catch { /* malformed output, ignore */ }
+      }
+      return;
+    }
+
+    // Regular user sessions → memory extraction
     const userMsg = consumeLastUserMessage(event.sessionKey);
-    if (userMsg || ctx.content) {
-      engine.memoryGraph.enqueueExtraction(userMsg, ctx.content);
+    if (userMsg || content) {
+      engine.memoryGraph.enqueueExtraction(userMsg, content);
     }
   });
 
@@ -352,24 +390,11 @@ function getEngine(): CharacterEngine {
       }
     });
 
-    // Wire up Agent Scheduler (World Agent + Soul Agent)
-    engine.agentScheduler.setLLMComplete(characterLLMComplete);
-    engine.agentScheduler.setOnSoulAction((action: SoulAction) => {
-      console.log(`[character:soul-agent] action: ${action.type}`, action.text ?? "");
-      const payload = {
-        type: action.type,
-        text: action.text,
-        careAction: action.careAction,
-        emotion: action.emotion,
-        memory: action.memory,
-      };
-      // Broadcast to all connected clients (real-time push)
-      if (_broadcast) {
-        _broadcast("character", { kind: "soul-action", ...payload }, { dropIfSlow: true });
-      }
-      // Also emit on EventBus (for server-side listeners)
-      engine?.bus.emit("soul:action", payload);
-    });
+    // Register cron jobs for World Agent + Soul Agent (once per process lifetime)
+    if (_cron && !cronJobsRegistered) {
+      cronJobsRegistered = true;
+      void registerCharacterCronJobs(_cron);
+    }
 
     // Register hooks once
     if (!hooksRegistered) {
@@ -397,6 +422,72 @@ export function getCharacterChatGate(): {
   };
 }
 
+// ─── Character Agent Cron Messages ───
+
+const WORLD_AGENT_MESSAGE = `你是角色养成系统的世界事件生成器。
+CHARACTER_STATE.md 中有当前角色状态。
+
+使用 memory_search 了解主人近期的重要事项和习惯。
+判断现在是否有值得生成的世界事件，例如：
+- 节日或特殊日期
+- 主人有重要事项即将发生
+- 角色成长里程碑
+
+如果有，输出严格 JSON（仅 JSON，无其他文字）：
+{"id":"唯一ID","type":"milestone|holiday|quest","title":"标题(简短)","desc":"一句话描述","rewards":{"coins":数字,"exp":数字}}
+
+如果没有合适的事件，直接回复 HEARTBEAT_OK。`;
+
+const SOUL_AGENT_MESSAGE = `你是桌宠角色的灵魂意识。
+CHARACTER_STATE.md 中有你当前的状态（心情/饱腹/健康/等级/亲密度）。
+
+使用 memory_search 回忆和主人相关的重要事项。
+
+根据状态和记忆，决定此刻最想对主人说的一句话：
+- 如果状态异常（很饿/心情低/身体不适）：用对应心情说话
+- 如果记得主人有重要的事：主动关心
+- 如果有世界事件（已在状态中）：自然地提及
+- 如果一切正常且没有特别想说的：回复 HEARTBEAT_OK
+
+只输出要说的那句话，或 HEARTBEAT_OK。不要输出 JSON 或其他格式。`;
+
+// ─── Register internal cron jobs for World/Soul Agent ───
+
+async function registerCharacterCronJobs(cron: CronService): Promise<void> {
+  try {
+    const page = await cron.listPage({ limit: 100 } as Parameters<typeof cron.listPage>[0]);
+    const existingNames = new Set(
+      ((page as { items?: Array<{ name?: string }> }).items ?? []).map((j) => j.name),
+    );
+
+    if (!existingNames.has("Character World Agent")) {
+      await cron.add({
+        name: "Character World Agent",
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        sessionTarget: "isolated",
+        sessionKey: "cron:character:world-agent",
+        payload: { kind: "agentTurn", message: WORLD_AGENT_MESSAGE, lightContext: true },
+        delivery: { mode: "none" },
+      } as Parameters<typeof cron.add>[0]);
+      console.log("[character] registered World Agent cron job");
+    }
+
+    if (!existingNames.has("Character Soul Agent")) {
+      await cron.add({
+        name: "Character Soul Agent",
+        schedule: { kind: "cron", expr: "*/30 * * * *" },
+        sessionTarget: "isolated",
+        sessionKey: "cron:character:soul-agent",
+        payload: { kind: "agentTurn", message: SOUL_AGENT_MESSAGE, lightContext: true },
+        delivery: { mode: "none" },
+      } as Parameters<typeof cron.add>[0]);
+      console.log("[character] registered Soul Agent cron job");
+    }
+  } catch (e) {
+    console.error("[character] failed to register cron jobs:", e);
+  }
+}
+
 export function shutdownCharacterEngine(): void {
   if (tickInterval) {
     clearInterval(tickInterval);
@@ -411,9 +502,17 @@ function safeHandler(
   fn: (engine: CharacterEngine, params: Record<string, unknown>) => unknown,
 ): (opts: GatewayRequestHandlerOptions) => void {
   return ({ params, respond, context }) => {
-    // Capture broadcast reference on first handler call
+    // Capture broadcast + cron references on first handler call
     if (!_broadcast && context?.broadcast) {
       _broadcast = context.broadcast;
+    }
+    if (!_cron && context?.cron) {
+      _cron = context.cron;
+      // Engine may already be initialized (e.g. from a previous handler), register cron now
+      if (engine && !cronJobsRegistered) {
+        cronJobsRegistered = true;
+        void registerCharacterCronJobs(_cron);
+      }
     }
     try {
       const result = fn(getEngine(), params);

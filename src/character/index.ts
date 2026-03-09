@@ -68,13 +68,6 @@ export {
   type WorldEvent,
 } from "./world-event-system.js";
 
-// Agent scheduler (World Agent + Soul Agent)
-export {
-  AgentScheduler,
-  type SoulAction,
-  type SoulActionCallback,
-} from "./agent-scheduler.js";
-
 // Domain definitions
 export {
   DOMAINS,

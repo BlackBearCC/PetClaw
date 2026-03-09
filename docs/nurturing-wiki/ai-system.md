@@ -275,228 +275,93 @@ registerInternalHook("message-sent", (event) => {
 
 ## 双 Agent 架构 — World Agent + Soul Agent
 
-除了用户主动对话（前台），角色还有两个**内置后台 Agent**，分别负责"世界发生了什么"和"角色想做什么"。它们是产品内置的，不暴露给用户、不可关闭、不出现在 agent 列表中。
+除了用户主动对话（前台），角色还有两个**内置后台 Agent**，分别负责"世界发生了什么"和"角色想做什么"。它们通过 **OpenClaw 原生 Cron + agentTurn** 调度，是产品内置的，不暴露给用户、不可关闭。
 
 ### 架构总览
 
 ```
-                    程序规则 (tick loop / hook / 条件检测)
-                    │ 零 token，确定性判断
-                    │
-         ┌──────────┴──────────┐
-         │ 有事件/有变化？       │ 没有 → 跳过本轮，不调 LLM
-         └──────────┬──────────┘
-                    │ 是
-          ┌─────────┴─────────┐
-          ▼                   ▼
-  ┌──────────────┐    ┌──────────────┐
-  │ World Agent  │    │ Soul Agent   │
-  │ (世界代理)    │    │ (灵魂代理)    │
-  │              │    │              │
-  │ 角色之外的事  │    │ 角色内心的事  │
-  │ 生成事件/任务 │    │ 决定说/做什么 │
-  │ /剧情/奖励   │    │              │
-  │              │    │              │
-  │ session:     │    │ session:     │
-  │ cron:world   │    │ cron:soul    │
-  │              │    │              │
-  │ delivery:    │    │ delivery:    │
-  │ none(内部)   │    │ announce     │
-  └──────┬───────┘    └──────┬───────┘
-         │ 写入 engine        │ 投递给用户
-         │ (事件队列/任务)     │ 或调用 character_* 工具
-         ▼                   ▼
-  CharacterEngine        客户端气泡/消息
+  OpenClaw Cron 调度 (持久化 + miss-fire 补偿)
+       │
+       ├── World Agent (每小时)
+       │     sessionTarget: "isolated"
+       │     sessionKey: "cron:character:world-agent"
+       │     CHARACTER_STATE.md 自动注入 (bootstrap hook)
+       │     可用工具: memory_search
+       │     delivery: none → message:sent hook → worldEvents.addEvent()
+       │
+       └── Soul Agent (每30分钟)
+             sessionTarget: "isolated"
+             sessionKey: "cron:character:soul-agent"
+             CHARACTER_STATE.md 自动注入 (bootstrap hook)
+             可用工具: memory_search
+             delivery: none → message:sent hook → broadcast 气泡
 ```
 
 ### World Agent — 世界代理
 
-**职责**: 生成角色之外的事件——任务、剧情、奖励、环境变化。不直接跟用户说话。
+**职责**: 生成角色之外的事件——节日、里程碑、主人重要事项。不直接跟用户说话。
 
-**触发流程**: 程序规则先跑，命中条件才调 LLM：
+**运行方式**: OpenClaw Cron，每小时触发一次 agentTurn。LLM 通过 `memory_search` 了解主人状态，输出 JSON 格式世界事件或 `HEARTBEAT_OK`（无事发生）。
 
-```typescript
-// World Agent cron — 每小时
-cronService.add({
-  id: "character:world-agent",
-  schedule: { kind: "cron", expr: "0 * * * *" },
-  sessionTarget: "isolated",  // → sessionKey: "cron:character:world-agent"
-  payload: {
-    kind: "agentTurn",
-    message: "", // 动态填充，见下方
-    lightContext: true,
-  },
-  delivery: { mode: "none" },  // 纯内部，不投递给用户
-});
+**输出格式**：
+```json
+{"id":"唯一ID","type":"milestone|holiday|quest","title":"标题","desc":"一句话描述","rewards":{"coins":50,"exp":30}}
 ```
 
-**程序规则前置过滤** (零 token)：
+输出由 `message:sent` hook 捕获，解析后写入 `WorldEventSystem`，去重由 `hasFired()` 保证。
 
-```typescript
-// 在 cron handler 触发前，程序先检测：
-function buildWorldAgentPrompt(): string | null {
-  const triggers: string[] = [];
+**World Agent 行为示例**:
 
-  // 连续登录里程碑
-  const streak = engine.login.getInfo().streak;
-  if ([3, 7, 14, 30].includes(streak) && !engine.worldEvents.hasFired(`streak_${streak}`)) {
-    triggers.push(`[里程碑] 主人连续登录了 ${streak} 天`);
-  }
-
-  // 新工具首次使用
-  const newTools = engine.skills.getNewToolsSinceLastCheck();
-  if (newTools.length > 0) {
-    triggers.push(`[新技能] 主人首次使用了工具: ${newTools.join(", ")}`);
-  }
-
-  // 节日/特殊日期
-  const holiday = getHolidayToday();
-  if (holiday) triggers.push(`[节日] 今天是 ${holiday}`);
-
-  // 技能图鉴有未探索领域
-  const weakDomains = engine.skills.getWeakDomains();
-  if (weakDomains.length > 0 && Math.random() < 0.3) {
-    triggers.push(`[探索] 这些领域还很薄弱: ${weakDomains.join(", ")}`);
-  }
-
-  if (triggers.length === 0) return null;  // 没事发生 → 不调 LLM
-
-  return `你是养成世界的事件生成器。以下情况发生了：
-${triggers.map(t => `- ${t}`).join("\n")}
-
-请为桌宠角色生成合适的世界事件。可用工具:
-- memory_search: 查主人记忆，让事件更贴合
-- character_world_event: 写入事件 {type, title, desc, rewards?}
-
-每次只生成 1 个最有意义的事件。`;
-}
-```
-
-**World Agent 产出示例**:
-
-| 程序检测到 | LLM 生成的世界事件 |
-|-----------|------------------|
-| 连续登录 7 天 | `{type:"milestone", title:"一周挚友", desc:"和主人相伴整整一周了", rewards:{coins:50, exp:30}}` |
-| 首次使用 image_gen | `{type:"skill_unlock", title:"创意觉醒", desc:"发现了画画的天赋！解锁创意领域"}` |
-| 春节 | `{type:"holiday", title:"新春快乐", desc:"给主人准备一个新年红包"}` |
-| 研究领域薄弱 | `{type:"quest", title:"小小研究员", desc:"试试帮主人搜一次资料吧"}` |
+| 状态 | LLM 生成的世界事件 |
+|------|------------------|
+| 记忆中有"连续登录7天" | `{type:"milestone", title:"一周挚友", desc:"和主人相伴整整一周了", rewards:{coins:50, exp:30}}` |
+| 记忆中有"主人明天答辩" | `{type:"quest", title:"答辩加油", desc:"主人今天有重要考验，送上祝福"}` |
+| 节日日期 | `{type:"holiday", title:"新春快乐", desc:"给主人准备一个新年红包"}` |
+| 无特别事项 | `HEARTBEAT_OK` |
 
 ### Soul Agent — 灵魂代理
 
-**职责**: 角色的自我意识——根据状态、记忆、世界事件，决定此刻最该做的一件事。这是唯一面向用户产出内容的后台 Agent。
+**职责**: 角色的自我意识——根据状态、记忆、世界事件，决定此刻要对主人说什么。
 
-```typescript
-// Soul Agent cron — 每 30 分钟
-cronService.add({
-  id: "character:soul-agent",
-  schedule: { kind: "cron", expr: "*/30 * * * *" },
-  sessionTarget: "isolated",  // → sessionKey: "cron:character:soul-agent"
-  payload: {
-    kind: "agentTurn",
-    message: "", // 动态填充
-    lightContext: true,
-  },
-  delivery: { mode: "announce" },  // 有话说就投递
-});
-```
+**运行方式**: OpenClaw Cron，每30分钟触发一次 agentTurn。LLM 看到 CHARACTER_STATE.md（当前心情/饱腹/健康/等级），使用 `memory_search` 回忆重要事项，输出一句话或 `HEARTBEAT_OK`。
 
-**程序规则前置过滤** (零 token)：
-
-```typescript
-function buildSoulAgentPrompt(): string | null {
-  const state = engine.getState();
-  const pendingEvents = engine.worldEvents.consumePending();
-
-  // 全部正常 + 无事件 + 最近说过话 → 跳过
-  if (
-    pendingEvents.length === 0 &&
-    state.mood > 30 && state.hunger > 60 && state.health > 40 &&
-    Date.now() - engine.lastProactiveChatAt < 20 * 60_000
-  ) {
-    return null; // 不调 LLM
-  }
-
-  let prompt = `你是桌宠角色。你的状态已在 CHARACTER_STATE.md 中注入。
-像一个真正活着的角色一样，决定此刻最想做的一件事：
-- 跟主人说句话
-- 照顾自己 (character_self_care)
-- 记住/回忆什么 (memory_search / character_remember)
-- 表达情绪 (character_express_mood)
-- 什么都不做 (回复 HEARTBEAT_OK)
-
-只做一件事。`;
-
-  if (pendingEvents.length > 0) {
-    prompt += `\n\n最近发生的世界事件:\n${pendingEvents.map(e =>
-      `- [${e.type}] ${e.title}: ${e.desc}`
-    ).join("\n")}`;
-  }
-
-  return prompt;
-}
-```
+输出由 `message:sent` hook 捕获，`_broadcast("character", { kind: "soul-action", type: "speak", text })` 推送到客户端，显示为角色气泡。
 
 **Soul Agent 行为示例**:
 
-| 输入 | Soul Agent 决策 |
+| 输入 | Soul Agent 输出 |
 |------|----------------|
-| hunger=20, 无世界事件 | "主人...好饿...能喂我一口吗 🥺" |
-| mood=80, 世界事件=[连续登录7天] | "诶嘿！我们已经在一起一周了耶！好开心！" |
-| 状态正常, 记忆里主人说明天答辩 | "明天答辩加油哦，我相信你！" |
-| 状态正常, 无事件, 最近说过话 | *(程序直接跳过，不调 LLM)* |
+| hunger 低 | "主人...好饿...能喂我一口吗" |
+| mood 高 + 记忆里有世界事件 | "诶嘿！我们已经在一起一周了耶！好开心！" |
+| 记忆里主人说明天答辩 | "明天答辩加油哦，我相信你！" |
+| 状态正常 + 无特别事项 | `HEARTBEAT_OK` (静默跳过) |
 
-### 两个 Agent 的协作
+### 实现位置
 
-```
-时间线:
-
-09:00  World Agent tick
-         程序检测: 首次使用 image_gen → 触发 LLM
-         LLM 生成: {type:"skill_unlock", title:"创意觉醒"} → 写入事件队列
-
-09:30  Soul Agent tick
-         程序检测: 事件队列非空 → 触发 LLM
-         LLM 看到: 状态正常 + [skill_unlock: 创意觉醒]
-         LLM 决策: "哇！我学会画画了！主人要不要看看我的作品~"
-         → announce 投递给客户端
-
-10:00  World Agent tick
-         程序检测: 无新事件 → 不调 LLM (零 token)
-
-10:30  Soul Agent tick
-         程序检测: 状态正常 + 无事件 + 30min内说过话 → 不调 LLM (零 token)
-```
+- **Cron 注册**: `src/gateway/server-methods/character.ts` → `registerCharacterCronJobs()`
+- **输出捕获**: 同文件 `message:sent` hook，通过 `event.sessionKey.includes("soul-agent/world-agent")` 区分
+- **世界事件存储**: `src/character/world-event-system.ts` → `WorldEventSystem`
+- **状态注入**: `agent:bootstrap` hook 全局生效，所有 agent 自动获得 CHARACTER_STATE.md
 
 ### Session 隔离
 
-两个 Agent 各有独立 session，互不干扰，也不影响用户对话：
-
 | session | 用途 | 生命周期 |
 |---------|------|---------|
-| `cron:character:world-agent` | World Agent 思考上下文 | 每次 agentTurn 隔离 |
-| `cron:character:soul-agent` | Soul Agent 思考上下文 | 每次 agentTurn 隔离 |
+| `cron:character:world-agent` | World Agent 独立上下文 | 每次 agentTurn 隔离 |
+| `cron:character:soul-agent` | Soul Agent 独立上下文 | 每次 agentTurn 隔离 |
 | 用户 session | 正常对话 | 用户控制 |
 
-三者完全隔离。Soul Agent 说的话通过 `delivery: announce` 投递到客户端，对用户来说就是"宠物主动冒了个泡"，不会出现在对话历史里。
-
-### 内置不可见
-
-这两个 Agent 是产品内置的基础设施：
-
-- **不暴露**: 不出现在 `cron.list` 的用户可见列表中（内部 pluginId 过滤）
-- **不可关闭**: 随 CharacterEngine 初始化自动注册，无 UI 开关
-- **不可检测**: 用户对话中看不到后台 Agent 的存在，只能感知到"宠物有时会主动说话"
-- **自动恢复**: OpenClaw Cron 持久化 + miss-fire 补偿，重启不丢失
+三者完全隔离，互不影响。
 
 ### Token 成本估算
 
-| | 频率 | 程序过滤率 | 实际 LLM 调用 | tokens/次 | 日消耗 |
+| | 频率 | 预计 HEARTBEAT_OK 率 | 实际有效调用 | tokens/次 | 日消耗 |
 |---|---|---|---|---|---|
-| World Agent | 每小时 (24/天) | ~80% 跳过 | ~5 次/天 | ~300 | ~1.5k |
-| Soul Agent | 每 30min (48/天) | ~70% 跳过 | ~15 次/天 | ~400 | ~6k |
-| **合计** | | | ~20 次/天 | | **~7.5k tokens/天** |
+| World Agent | 24次/天 | ~70% | ~7 次/天 | ~400 | ~2.8k |
+| Soul Agent | 48次/天 | ~60% | ~19 次/天 | ~500 | ~9.5k |
+| **合计** | | | ~26 次/天 | | **~12k tokens/天** |
 
-对比：用户一次正常聊天 ~1000-3000 tokens。后台 Agent 日消耗约等于 3-5 轮用户对话。
+对比：用户一次正常聊天 ~1000-3000 tokens。后台 Agent 日消耗约等于 5-10 轮用户对话。
 
 ### 扩展场景
 

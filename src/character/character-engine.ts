@@ -27,7 +27,6 @@ import { DailyTaskSystem } from "./daily-task-system.js";
 import { ShopSystem } from "./shop-system.js";
 import { MemoryGraphSystem } from "./memory-graph.js";
 import { WorldEventSystem } from "./world-event-system.js";
-import { AgentScheduler } from "./agent-scheduler.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -81,7 +80,6 @@ export class CharacterEngine {
   readonly shop: ShopSystem;
   readonly memoryGraph: MemoryGraphSystem;
   readonly worldEvents: WorldEventSystem;
-  readonly agentScheduler: AgentScheduler;
 
   private _passiveAcc: number = 0;
 
@@ -164,9 +162,6 @@ export class CharacterEngine {
     // World events (inter-agent event queue)
     this.worldEvents = new WorldEventSystem(options.store);
 
-    // Agent scheduler (World Agent + Soul Agent)
-    this.agentScheduler = new AgentScheduler(this);
-
     // ─── Cross-system wiring ───
 
     // Level up → update decay multiplier, offline hours, inventory capacity, coin bonus
@@ -208,9 +203,6 @@ export class CharacterEngine {
 
     // Login tracker (accumulate online time)
     this.login.tick();
-
-    // World Agent + Soul Agent (pre-filter + LLM on timer)
-    this.agentScheduler.tick(deltaMs);
 
     this.bus.emit("tick", { deltaMs });
   }
