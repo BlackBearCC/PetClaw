@@ -486,7 +486,6 @@ class OpenClawPet {
     this.skillPanel.onStateChange = syncWin;
     if (this.nurturingPanel) this.nurturingPanel.onStateChange = syncWin;
     if (this.memoryGraphPanel) this.memoryGraphPanel.onStateChange = syncWin;
-    if (this.bottomChatInput) this.bottomChatInput.onStateChange = syncWin;
 
     // 6j. 工作区感知
     this.workspaceWatcher = new WorkspaceWatcher();
@@ -512,8 +511,7 @@ class OpenClawPet {
 
     // 7. 交互处理器
     this.dragHandler = new DragHandler(
-      this.canvas, this.stateMachine, this.behaviors, this.electronAPI,
-      { onDragEnd: ({ pos, screen }) => this._updateBubbleDirection(pos, screen) }
+      this.canvas, this.stateMachine, this.behaviors, this.electronAPI
     );
 
     this.clickHandler = new ClickHandler(
@@ -600,9 +598,6 @@ class OpenClawPet {
       this.bubble.show(greeting, 4000);
       this.stateMachine.transition('happy', { force: true, duration: 3000 });
     }, 800);
-
-    // 启动时初始化气泡方向
-    this._updateBubbleDirection();
 
     console.log('✅ OpenClaw Pet ready!');
   }
@@ -691,32 +686,29 @@ class OpenClawPet {
   }
 
   async _doSyncWindowSize() {
+    // 窗口始终保持展开尺寸（PET_EXPANDED_W × PET_H），
+    // 透明区域通过 setIgnoreMouseEvents(true, { forward: true }) 穿透点击。
+    // 仅处理面板方向（左/右）的 CSS 切换。
     if (!this.electronAPI) return;
-    const panels = [this.chatPanel, this.settingsPanel, this.skillPanel, this.memoryGraphPanel, this.nurturingPanel, this.bottomChatInput];
+    const panels = [this.chatPanel, this.settingsPanel, this.skillPanel, this.memoryGraphPanel, this.nurturingPanel];
     const anyOpen = panels.some(p => p?.isOpen);
 
     if (!anyOpen) {
       document.body.classList.remove('panels-right');
       this._panelSide = null;
-      this.electronAPI.expandWindow(false, this._lastPanelSide || 'left');
-      this._lastPanelSide = null;
       return;
     }
 
-    // 已展开且方向未变 → 跳过
     if (this._panelSide) return;
 
     try {
       const pos = await this.electronAPI.getWindowPosition();
-      const PANEL_W = 316; // 596 - 280
-      const side = pos.x >= PANEL_W ? 'left' : 'right';
+      const PANEL_W = 316;
+      const petLeft = pos.x + window.innerWidth - 256; // 宠物区域左边缘
+      const side = petLeft >= PANEL_W ? 'left' : 'right';
       document.body.classList.toggle('panels-right', side === 'right');
       this._panelSide = side;
-      this._lastPanelSide = side;
-      this.electronAPI.expandWindow(true, side);
-    } catch {
-      this.electronAPI.expandWindow(true, 'left');
-    }
+    } catch {}
   }
 
   /** 菜单关闭后恢复穿透状态（交给下一次 mousemove 精确判断） */
@@ -1111,7 +1103,7 @@ class OpenClawPet {
     try {
       const pos = await this.electronAPI.getWindowPosition();
       const scr = await this.electronAPI.getScreenSize();
-      const centerX = pos.x + 128; // 窗口中心
+      const centerX = pos.x + window.innerWidth - 128; // 宠物区域中心
       const isOnRight = centerX > scr.width / 2;
       const side = isOnRight ? 'left' : 'right';
       this.bottomChatInput?.updateSide(side);
@@ -1122,47 +1114,6 @@ class OpenClawPet {
       }
     } catch {} finally {
       this._updatingSide = false;
-    }
-  }
-
-  /**
-   * 根据窗口位置判断气泡显示方向。
-   * 当窗口上方空间不足 200px 时，气泡切换到左侧或右侧显示。
-   * 可以直接传入 pos/screen（拖拽结束时已获取），也可以不传（方法内自行查询）。
-   * @param {object} [pos]    - { x, y } 窗口左上角屏幕坐标
-   * @param {object} [screen] - { width, height } 屏幕尺寸
-   */
-  async _updateBubbleDirection(pos, screen) {
-    try {
-      if (!pos) {
-        if (!this.electronAPI?.getWindowPosition) return;
-        pos = await this.electronAPI.getWindowPosition();
-      }
-      if (!screen) {
-        if (!this.electronAPI?.getScreenSize) return;
-        screen = await this.electronAPI.getScreenSize();
-      }
-
-      const BUBBLE_NEED_H = 200; // 气泡至少需要 200px 上方空间
-      const BUBBLE_NEED_W = 220; // 气泡宽度（含裕量）
-
-      if (pos.y >= BUBBLE_NEED_H) {
-        // 上方空间足够 — 正常显示
-        document.body.classList.remove('bubble-left', 'bubble-right');
-      } else {
-        // 上方空间不足 — 切换到左侧或右侧
-        const leftSpace = pos.x;
-        const rightSpace = screen.width - pos.x - window.innerWidth;
-        if (leftSpace >= BUBBLE_NEED_W) {
-          document.body.classList.add('bubble-left');
-          document.body.classList.remove('bubble-right');
-        } else {
-          document.body.classList.add('bubble-right');
-          document.body.classList.remove('bubble-left');
-        }
-      }
-    } catch {
-      // IPC 查询失败时保持现有方向，不做变更
     }
   }
 

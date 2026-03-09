@@ -78,7 +78,6 @@ export class BottomChatInput {
     this.isOpen = true;
     this.barEl.classList.add('open');
     this.toggleBtn.classList.add('active');
-    this.onStateChange?.();
     setTimeout(() => this.inputEl.focus(), 260);
   }
 
@@ -88,7 +87,6 @@ export class BottomChatInput {
     this.barEl.classList.remove('open');
     this.toggleBtn.classList.remove('active');
     this.inputEl.value = '';
-    this.onStateChange?.();
   }
 
   toggle() {

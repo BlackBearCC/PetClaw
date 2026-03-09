@@ -30,7 +30,6 @@ export class Bubble {
       word-wrap: break-word;
       box-shadow: 3px 3px 0 #2A2A2A;
       opacity: 0;
-      transform: translateY(10px);
       transition: opacity 0.3s ease, transform 0.3s ease;
       pointer-events: none;
       z-index: 10;
@@ -82,7 +81,7 @@ export class Bubble {
 
     this.textNode.textContent = text;
     this.element.style.opacity = '1';
-    this.element.style.transform = 'translateY(0)';
+    this.element.style.transform = 'translateY(-5px)';
 
     if (duration > 0) {
       this.hideTimer = setTimeout(() => this.hide(), duration);
@@ -94,7 +93,7 @@ export class Bubble {
    */
   hide() {
     this.element.style.opacity = '0';
-    this.element.style.transform = 'translateY(10px)';
+    this.element.style.transform = 'translateY(0)';
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
       this.hideTimer = null;

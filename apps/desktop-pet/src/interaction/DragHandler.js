@@ -14,15 +14,12 @@ export class DragHandler {
    * @param {import('../pet/StateMachine').StateMachine} stateMachine
    * @param {import('../pet/Behaviors').Behaviors} behaviors
    * @param {object} electronAPI - preload 暴露的 Electron API
-   * @param {object} [options] - 可选配置
-   * @param {function} [options.onDragEnd] - 拖拽结束后回调，传入 { pos, screen }
    */
-  constructor(element, stateMachine, behaviors, electronAPI, options = {}) {
+  constructor(element, stateMachine, behaviors, electronAPI) {
     this.element = element;
     this.sm = stateMachine;
     this.behaviors = behaviors;
     this.electronAPI = electronAPI;
-    this._onDragEndCallback = options.onDragEnd || null;
 
     this.isDragging = false;
     this._isMouseDown = false;
@@ -90,12 +87,17 @@ export class DragHandler {
         const SNAP = 30;
         const winW = window.innerWidth;
         const winH = window.innerHeight;
+        // 宠物区域在窗口最右侧 256px，吸附基于宠物位置而非窗口位置
+        const petAreaW = 256;
+        const petOffset = winW - petAreaW; // 窗口左侧透明区宽度
+        const petLeft = pos.x + petOffset;
+        const petRight = pos.x + winW;
         let snapped = null;
         let snapX = pos.x;
         let snapY = pos.y;
 
-        if (pos.x <= SNAP) { snapX = 0; snapped = 'left'; }
-        else if (pos.x + winW >= screen.width - SNAP) { snapX = screen.width - winW; snapped = 'right'; }
+        if (petLeft <= SNAP) { snapX = SNAP - petOffset; snapped = 'left'; }
+        else if (petRight >= screen.width - SNAP) { snapX = screen.width - winW; snapped = 'right'; }
 
         if (pos.y <= SNAP) { snapY = 0; snapped = snapped || 'top'; }
         else if (pos.y + winH >= screen.height - SNAP) { snapY = screen.height - winH; snapped = snapped || 'bottom'; }
@@ -107,10 +109,6 @@ export class DragHandler {
         this.behaviors.setPosition(snapX, snapY);
         this.behaviors.setEdgeSnapped(snapped);
         this.sm.transition(snapped ? 'edge_idle' : 'idle', { force: true });
-
-        if (this._onDragEndCallback) {
-          this._onDragEndCallback({ pos: { x: snapX, y: snapY }, screen });
-        }
       } catch {
         this.sm.transition('idle', { force: true });
       }

@@ -45,20 +45,19 @@ function detectClipboardType(text) {
 }
 
 // ===== 窗口尺寸（动态缩放：基础仅宠物区，展开含面板）=====
-const PET_BASE_W = 280;       // 基础宽度（宠物 + 气泡）
-const PET_EXPANDED_W = 596;   // 展开宽度（宠物 + 面板）
-const PET_BASE_H = 420;       // 基础高度（画布 256 + 气泡空间 142px）
-const PET_EXPANDED_H = 580;   // 展开高度（面板最高 520 + 边距）
-const PET_AREA_W = 256;       // 宠物区域 CSS 宽度
+const PET_BASE_W = 280;     // 基础宽度（宠物 + 气泡）
+const PET_EXPANDED_W = 596; // 展开宽度（宠物 + 面板）
+const PET_H = 580;
+const PET_AREA_W = 256;     // 宠物区域 CSS 宽度
 
 function createWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
 
   mainWindow = new BrowserWindow({
-    width: PET_BASE_W,
-    height: PET_BASE_H,
-    x: screenWidth - PET_BASE_W - 50,
-    y: screenHeight - PET_BASE_H - 20,
+    width: PET_EXPANDED_W,
+    height: PET_H,
+    x: screenWidth - PET_EXPANDED_W - 50,
+    y: screenHeight - PET_H - 20,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -85,6 +84,9 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+
+  // 窗口始终保持展开尺寸，透明区域默认穿透
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   // ===== IPC: 鼠标穿透 =====
   ipcMain.on('set-ignore-mouse', (event, ignore) => {
@@ -142,28 +144,9 @@ function createWindow() {
     if (win32Monitor) win32Monitor.stopDockTracking();
   });
 
-  // ===== IPC: 窗口展开/收缩（面板打开时扩展，关闭时收回）=====
-  ipcMain.on('expand-window', (event, expand, side) => {
-    if (!mainWindow) return;
-    const [curW, curH] = mainWindow.getSize();
-    const targetW = expand ? PET_EXPANDED_W : PET_BASE_W;
-    const targetH = expand ? PET_EXPANDED_H : PET_BASE_H;
-    if (curW === targetW && curH === targetH) return;
-
-    const [x, y] = mainWindow.getPosition();
-    // --- 水平方向 ---
-    let newX;
-    if (side === 'right') {
-      const layoutShift = PET_BASE_W - PET_AREA_W; // 24px
-      newX = expand ? x + layoutShift : x - layoutShift;
-    } else {
-      newX = x + (curW - targetW);
-    }
-    // --- 垂直方向：向上展开，保持底边不动 ---
-    let newY = y + (curH - targetH);
-    if (newY < 0) newY = 0;
-    mainWindow.setBounds({ x: newX, y: newY, width: targetW, height: targetH });
-  });
+  // ===== IPC: 窗口展开/收缩 =====
+  // 窗口始终保持展开尺寸，不再动态 setBounds（避免透明窗口重绘闪烁）
+  ipcMain.on('expand-window', () => { /* no-op */ });
 
   // ===== IPC: Pet Engine RPC =====
   ipcMain.handle('pet-rpc', async (event, method, params) => {
