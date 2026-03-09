@@ -56,6 +56,14 @@ export type CharacterEventMap = {
   'todo:deleted': { todo: { id: string; title: string } };
   /** Todos regenerated */
   'todo:regenerated': { cleared: number };
+  /** Adventure started */
+  'adventure:started': { adventure: { id: string; location: string; type: string; duration: number } };
+  /** Adventure choice made */
+  'adventure:choice': { adventure: { id: string }; choiceId: string };
+  /** Adventure completed */
+  'adventure:completed': { adventure: { id: string }; result: { success: boolean; narrative: string } };
+  /** Adventure cancelled */
+  'adventure:cancelled': { adventure: { id: string } };
 };
 
 type EventHandler<T> = (data: T) => void;

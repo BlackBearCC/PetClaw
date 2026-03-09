@@ -28,6 +28,7 @@ import { ShopSystem } from "./shop-system.js";
 import { MemoryGraphSystem } from "./memory-graph.js";
 import { WorldEventSystem } from "./world-event-system.js";
 import { TodoSystem } from "./todo-system.js";
+import { AdventureSystem } from "./adventure-system.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -82,6 +83,7 @@ export class CharacterEngine {
   readonly memoryGraph: MemoryGraphSystem;
   readonly worldEvents: WorldEventSystem;
   readonly todos: TodoSystem;
+  readonly adventures: AdventureSystem;
 
   private _passiveAcc: number = 0;
 
@@ -166,6 +168,9 @@ export class CharacterEngine {
 
     // Todo system (daily todos from chat)
     this.todos = new TodoSystem(this.bus, options.store);
+
+    // Adventure system (exploration mechanics)
+    this.adventures = new AdventureSystem(this.bus, options.store);
 
     // ─── Cross-system wiring ───
 
@@ -270,6 +275,12 @@ export class CharacterEngine {
       resting: this.care.getRestStatus(),
       wallet: this.shop.getWallet(),
       todos: this.todos.getStats(),
+      adventure: this.adventures.getActiveAdventure()
+        ? {
+            active: true,
+            ...this.adventures.getActiveAdventure()!,
+          }
+        : { active: false },
     };
   }
 
@@ -401,6 +412,13 @@ export interface CharacterState {
     pending: number;
     completed: number;
     verified: number;
+  };
+  adventure: {
+    active: boolean;
+    id?: string;
+    location?: string;
+    type?: string;
+    duration?: number;
   };
 }
 
