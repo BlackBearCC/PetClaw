@@ -190,8 +190,18 @@ export class StreamingBubble {
     el.style.setProperty('--tilt', `rotate(${tilt.toFixed(1)}deg)`);
 
     this.wrapEl.appendChild(el);
-    const seg = { el, text, timer: null };
+    const seg = { el, text, timer: null, hovered: false };
     this.segments.push(seg);
+
+    // hover → 暂停自动消失
+    el.addEventListener('mouseenter', () => {
+      seg.hovered = true;
+      if (seg.timer) { clearTimeout(seg.timer); seg.timer = null; }
+    });
+    el.addEventListener('mouseleave', () => {
+      seg.hovered = false;
+      seg.timer = setTimeout(() => this._retireSegment(seg), 8000);
+    });
 
     // 触发入场动画
     requestAnimationFrame(() => el.classList.add('visible'));
@@ -203,8 +213,8 @@ export class StreamingBubble {
       this._retireSegment(oldest);
     }
 
-    // 5 秒后自动退休
-    seg.timer = setTimeout(() => this._retireSegment(seg), 5000);
+    // 8 秒后自动退休
+    seg.timer = setTimeout(() => this._retireSegment(seg), 8000);
   }
 
   /** 更新正在打字的临时段 */

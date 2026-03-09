@@ -24,7 +24,7 @@ export class MarkdownPanel {
    * @param {string} markdownText - 完整回复文本
    * @param {number} duration     - 自动关闭毫秒数，0=不自动关闭
    */
-  show(markdownText, duration = 15000) {
+  show(markdownText, duration = 30000) {
     this._clear();
 
     const el = document.createElement('div');
@@ -50,6 +50,16 @@ export class MarkdownPanel {
 
     document.body.appendChild(el);
     this._el = el;
+
+    // hover → 暂停自动消失
+    el.addEventListener('mouseenter', () => {
+      this._hovered = true;
+      if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    });
+    el.addEventListener('mouseleave', () => {
+      this._hovered = false;
+      this._timer = setTimeout(() => this.hide(), 30000);
+    });
 
     requestAnimationFrame(() => el.classList.add('visible'));
 
