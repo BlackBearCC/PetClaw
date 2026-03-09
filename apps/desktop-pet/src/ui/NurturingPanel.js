@@ -3,11 +3,11 @@
  * 养成面板 — 背包 / 每日任务 / 养护 / 商城
  *
  * 通过 petRPC 调用服务端:
- *   pet.inventory.list / pet.inventory.use
- *   pet.daily.tasks / pet.daily.claim / pet.daily.streak
- *   pet.care.feed / pet.care.play / pet.care.heal / pet.care.rest
- *   pet.level.info / pet.wallet.info
- *   pet.shop.list / pet.shop.buy
+ *   character.inventory.list / character.inventory.use
+ *   character.daily.tasks / character.daily.claim / character.daily.streak
+ *   character.care.feed / character.care.play / character.care.heal / character.care.rest
+ *   character.level.info / character.wallet.info
+ *   character.shop.list / character.shop.buy
  */
 
 const ICON_BASE = '../assets/icons';
@@ -160,8 +160,8 @@ export class NurturingPanel {
     const bar = this.element.querySelector('.nur-level-bar');
     try {
       const [levelInfo, streakInfo] = await Promise.all([
-        this._rpc('pet.level.info'),
-        this._rpc('pet.daily.streak'),
+        this._rpc('character.level.info'),
+        this._rpc('character.daily.streak'),
       ]);
       const pct = levelInfo.expToNext > 0
         ? Math.round(((levelInfo.exp - levelInfo.currentLevelExp) / (levelInfo.expToNext - levelInfo.currentLevelExp)) * 100)
@@ -187,7 +187,7 @@ export class NurturingPanel {
 
   async _renderInventory(body) {
     try {
-      const data = await this._rpc('pet.inventory.list');
+      const data = await this._rpc('character.inventory.list');
       const items = data?.items || [];
       if (!items.length) {
         body.innerHTML = '<div class="nur-empty">背包空空如也~<br>完成每日任务获取道具吧！</div>';
@@ -230,7 +230,7 @@ export class NurturingPanel {
 
   async _useItem(itemId) {
     try {
-      const result = await this._rpc('pet.inventory.use', { itemId });
+      const result = await this._rpc('character.inventory.use', { itemId });
       if (result?.ok) {
         const itemName = ITEM_ICONS[itemId] ? itemId : '道具';
         this._onBubble(['用了好东西~', '感觉不错！', '谢谢主人！'][Math.floor(Math.random() * 3)]);
@@ -257,8 +257,8 @@ export class NurturingPanel {
   async _renderTasks(body) {
     try {
       const [data, streakData] = await Promise.all([
-        this._rpc('pet.daily.tasks'),
-        this._rpc('pet.daily.streak'),
+        this._rpc('character.daily.tasks'),
+        this._rpc('character.daily.streak'),
       ]);
       const tasks = data?.tasks || [];
       const counters = data?.counters || {};
@@ -313,7 +313,7 @@ export class NurturingPanel {
 
   async _claimTask(taskId) {
     try {
-      const result = await this._rpc('pet.daily.claim', { taskId });
+      const result = await this._rpc('character.daily.claim', { taskId });
       if (result?.ok) {
         const rewardStr = this._formatReward(result.reward);
         this._onBubble(`任务完成！获得 ${rewardStr}`);
@@ -343,18 +343,18 @@ export class NurturingPanel {
 
   async _renderCare(body) {
     const careActions = [
-      { id: 'feed',  label: '喂食',   icon: ACTION_ICONS.feed, method: 'pet.care.feed', desc: '恢复饱食度' },
-      { id: 'play',  label: '玩耍',   icon: ACTION_ICONS.play, method: 'pet.care.play', desc: '提升心情',
+      { id: 'feed',  label: '喂食',   icon: ACTION_ICONS.feed, method: 'character.care.feed', desc: '恢复饱食度' },
+      { id: 'play',  label: '玩耍',   icon: ACTION_ICONS.play, method: 'character.care.play', desc: '提升心情',
         options: [
           { id: 'pet_stroke', label: '抚摸' },
           { id: 'hide_seek', label: '捉迷藏' },
           { id: 'sunbathe', label: '晒太阳' },
         ]
       },
-      { id: 'heal',  label: '治疗',   icon: ACTION_ICONS.heal, method: 'pet.care.heal', desc: '恢复健康',
+      { id: 'heal',  label: '治疗',   icon: ACTION_ICONS.heal, method: 'character.care.heal', desc: '恢复健康',
         needsItem: true, itemCategory: 'medicine',
       },
-      { id: 'rest',  label: '休息',   icon: ACTION_ICONS.rest, method: 'pet.care.rest', desc: '恢复健康与心情',
+      { id: 'rest',  label: '休息',   icon: ACTION_ICONS.rest, method: 'character.care.rest', desc: '恢复健康与心情',
         options: [
           { id: 'nap', label: '小憩 (15分钟)' },
           { id: 'deep_sleep', label: '深度睡眠 (1小时)' },
@@ -365,7 +365,7 @@ export class NurturingPanel {
     // 获取背包道具用于治疗选择
     let inventoryItems = [];
     try {
-      const inv = await this._rpc('pet.inventory.list');
+      const inv = await this._rpc('character.inventory.list');
       inventoryItems = (inv?.items || []).filter(i => i.category === 'medicine' && i.canUse);
     } catch { /* ignore */ }
 
@@ -413,24 +413,24 @@ export class NurturingPanel {
   async _doCare(method, param) {
     try {
       const params = {};
-      if (method === 'pet.care.feed') params.itemId = param || 'ration_42';
-      else if (method === 'pet.care.play') params.actionId = param || 'pet_stroke';
-      else if (method === 'pet.care.heal') params.itemId = param;
-      else if (method === 'pet.care.rest') params.typeId = param || 'nap';
+      if (method === 'character.care.feed') params.itemId = param || 'ration_42';
+      else if (method === 'character.care.play') params.actionId = param || 'pet_stroke';
+      else if (method === 'character.care.heal') params.itemId = param;
+      else if (method === 'character.care.rest') params.typeId = param || 'nap';
 
       const result = await this._rpc(method, params);
       if (result?.ok) {
         const msgs = {
-          'pet.care.feed': ['好吃！~ 😋', '满足~', '还想要！'],
-          'pet.care.play': ['好好玩！', '开心！', '再来！'],
-          'pet.care.heal': ['感觉好多了~', '谢谢照顾！', '舒服~'],
-          'pet.care.rest': ['困了...zzZ', '晚安~', '让我眯一会儿...'],
+          'character.care.feed': ['好吃！~ 😋', '满足~', '还想要！'],
+          'character.care.play': ['好好玩！', '开心！', '再来！'],
+          'character.care.heal': ['感觉好多了~', '谢谢照顾！', '舒服~'],
+          'character.care.rest': ['困了...zzZ', '晚安~', '让我眯一会儿...'],
         };
         const pool = msgs[method] || ['好的~'];
         this._onBubble(pool[Math.floor(Math.random() * pool.length)]);
 
-        if (method === 'pet.care.play') this._onAnimation('happy');
-        if (method === 'pet.care.rest') this._onAnimation('sleep');
+        if (method === 'character.care.play') this._onAnimation('happy');
+        if (method === 'character.care.rest') this._onAnimation('sleep');
       } else {
         this._onBubble(result?.reason || '现在不行...');
       }
@@ -444,7 +444,7 @@ export class NurturingPanel {
 
   async _renderShop(body) {
     try {
-      const data = await this._rpc('pet.shop.list');
+      const data = await this._rpc('character.shop.list');
       const items = data?.items || [];
       const wallet = data?.wallet || { coins: 0 };
 
@@ -491,7 +491,7 @@ export class NurturingPanel {
 
   async _buyItem(itemId) {
     try {
-      const result = await this._rpc('pet.shop.buy', { itemId, qty: 1 });
+      const result = await this._rpc('character.shop.buy', { itemId, qty: 1 });
       if (result?.ok) {
         const bal = result.wallet?.coins ?? '?';
         this._onBubble(`买到了！剩余 ${bal} 🪙`);

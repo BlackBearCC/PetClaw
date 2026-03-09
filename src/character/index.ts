@@ -1,11 +1,11 @@
 /**
- * Pet Engine — Public API
+ * Character Engine — Public API
  *
- * All exports for consumers of the pet engine.
+ * All exports for consumers of the character engine.
  */
 
 // Core
-export { EventBus, type PetEventMap } from "./event-bus.js";
+export { EventBus, type CharacterEventMap } from "./event-bus.js";
 export {
   AttributeEngine,
   type AttributeDef,
@@ -84,8 +84,8 @@ export {
 
 // Main entry
 export {
-  PetEngine,
-  createPetEngine,
-  type PetEngineOptions,
-  type PetState,
-} from "./pet-engine.js";
+  CharacterEngine,
+  createCharacterEngine,
+  type CharacterEngineOptions,
+  type CharacterState,
+} from "./character-engine.js";

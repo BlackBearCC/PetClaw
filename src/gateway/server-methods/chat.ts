@@ -66,7 +66,7 @@ import type {
   GatewayRequestHandlerOptions,
   GatewayRequestHandlers,
 } from "./types.js";
-import { getPetChatGate } from "./pet.js";
+import { getCharacterChatGate } from "./character.js";
 
 type TranscriptAppendResult = {
   ok: boolean;
@@ -1010,18 +1010,18 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    // ── Pet chat gate ──
-    const petGate = getPetChatGate();
-    if (petGate) {
-      const canChat = petGate.canChat();
+    // ── Character chat gate ──
+    const charGate = getCharacterChatGate();
+    if (charGate) {
+      const canChat = charGate.canChat();
       if (!canChat.ok) {
         respond(false, undefined, errorShape(
           ErrorCodes.UNAVAILABLE,
-          `pet:too_hungry:${canChat.hunger}/${canChat.minRequired}`,
+          `character:too_hungry:${canChat.hunger}/${canChat.minRequired}`,
         ));
         return;
       }
-      petGate.onMessage(parsedMessage);
+      charGate.onMessage(parsedMessage);
     }
 
     try {

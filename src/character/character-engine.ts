@@ -1,11 +1,11 @@
 /**
- * Pet Engine — Main Entry
+ * Character Engine — Main Entry
  *
- * Composes all pet subsystems into a single engine instance.
+ * Composes all companion subsystems into a single engine instance.
  * This is the primary API surface for clients (desktop-pet, web widget, etc.)
  *
  * Usage:
- *   const engine = createPetEngine({ store, persona: '...' });
+ *   const engine = createCharacterEngine({ store, persona: '...' });
  *   engine.tick(deltaMs);              // call from game loop
  *   engine.interact('feed');           // user interaction
  *   engine.bus.on('growth:stage-up', handler);
@@ -31,7 +31,7 @@ import type { AttributeDef } from "./attribute-engine.js";
 
 // ─── Types ───
 
-export interface PetEngineOptions {
+export interface CharacterEngineOptions {
   /** Persistence adapter (localStorage wrapper, file-based, etc.) */
   store: PersistenceStore;
   /** Base persona string */
@@ -62,7 +62,7 @@ const PASSIVE_TICK_INTERVAL_MS = 30_000;
 
 // ─── Engine ───
 
-export class PetEngine {
+export class CharacterEngine {
   readonly bus: EventBus;
   readonly attributes: AttributeEngine;
   readonly growth: GrowthSystem;
@@ -81,7 +81,7 @@ export class PetEngine {
 
   private _passiveAcc: number = 0;
 
-  constructor(options: PetEngineOptions) {
+  constructor(options: CharacterEngineOptions) {
     this.bus = new EventBus();
 
     // Level system (must init before attributes for offline decay params)
@@ -236,8 +236,8 @@ export class PetEngine {
     this.dailyTasks.incrementCounter("toolUseCount");
   }
 
-  /** Get a snapshot of the full pet state (for UI rendering) */
-  getState(): PetState {
+  /** Get a snapshot of the full companion state (for UI rendering) */
+  getState(): CharacterState {
     return {
       attributes: this.attributes.getAll(),
       growth: {
@@ -327,7 +327,7 @@ export class PetEngine {
   }
 }
 
-export interface PetState {
+export interface CharacterState {
   attributes: Array<{
     key: string;
     name: string;
@@ -386,11 +386,11 @@ export interface PetState {
 
 // ─── Factory ───
 
-export function createPetEngine(options: PetEngineOptions): PetEngine {
-  return new PetEngine(options);
+export function createCharacterEngine(options: CharacterEngineOptions): CharacterEngine {
+  return new CharacterEngine(options);
 }
 
-// ─── Pet State Prompt Builder ───
+// ─── Character State Prompt Builder ───
 
 const MOOD_FRAGMENTS: Record<string, string> = {
   low:  "你现在心情很低落，说话简短消沉，不太想聊天，偶尔叹气。",

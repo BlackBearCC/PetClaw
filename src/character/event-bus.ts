@@ -1,11 +1,11 @@
 /**
- * Pet Engine — EventBus
+ * Character Engine — EventBus
  *
- * Typed event bus for pet engine subsystems.
+ * Typed event bus for character engine subsystems.
  * Replaces per-system callback arrays with a unified pub/sub mechanism.
  */
 
-export type PetEventMap = {
+export type CharacterEventMap = {
   /** Attribute value crossed a level boundary */
   'attribute:level-change': { key: string; level: string; value: number; prev: string };
   /** Growth stage advanced */
@@ -49,7 +49,7 @@ type EventHandler<T> = (data: T) => void;
 export class EventBus {
   private _handlers = new Map<string, Set<EventHandler<unknown>>>();
 
-  on<K extends keyof PetEventMap>(event: K, handler: EventHandler<PetEventMap[K]>): () => void {
+  on<K extends keyof CharacterEventMap>(event: K, handler: EventHandler<CharacterEventMap[K]>): () => void {
     if (!this._handlers.has(event)) {
       this._handlers.set(event, new Set());
     }
@@ -58,7 +58,7 @@ export class EventBus {
     return () => set.delete(handler as EventHandler<unknown>);
   }
 
-  emit<K extends keyof PetEventMap>(event: K, data: PetEventMap[K]): void {
+  emit<K extends keyof CharacterEventMap>(event: K, data: CharacterEventMap[K]): void {
     const set = this._handlers.get(event);
     if (!set) return;
     for (const handler of set) {
@@ -70,7 +70,7 @@ export class EventBus {
     }
   }
 
-  off<K extends keyof PetEventMap>(event: K, handler: EventHandler<PetEventMap[K]>): void {
+  off<K extends keyof CharacterEventMap>(event: K, handler: EventHandler<CharacterEventMap[K]>): void {
     this._handlers.get(event)?.delete(handler as EventHandler<unknown>);
   }
 

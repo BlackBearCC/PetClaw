@@ -553,10 +553,10 @@ class OpenClawPet {
         { icon: '🐾', label: '养成',       action: () => { _closeOtherPanels(this.nurturingPanel); this.nurturingPanel.toggle(); } },
         { icon: '🧠', label: '记忆图谱',   action: () => { _closeOtherPanels(this.memoryGraphPanel); this.memoryGraphPanel?.toggle(); } },
         { type: 'separator' },
-        { icon: _ic('action','action_feed'), label: '喂零食',   action: async () => { if (!this.feedingAnimator.isPlaying) { this.behaviors.recordInteraction(); this.feedingAnimator.play(async () => { try { const r = await api.petRPC('pet.care.feed', { itemId: 'ration_42' }); this.bubble.show(r?.ok ? ['好吃！~ 😋','喵呜~ 谢谢主人！','啊好香！还有吗！'][Math.floor(Math.random()*3)] : (r?.reason || '吃不下了...'), 3000); } catch { this.petSync.interact('feed'); this.bubble.show('好吃！~ 😋', 3000); } }); } } },
-        { icon: _ic('action','action_play'), label: '玩耍',     action: async () => { this.behaviors.recordInteraction(); try { const r = await api.petRPC('pet.care.play', { actionId: 'pet_stroke' }); this.bubble.show(r?.ok ? ['好好玩！🎉','再来一次！','嘿嘿~ 开心！'][Math.floor(Math.random()*3)] : (r?.reason || '不想玩...'), 3000); } catch { this.petSync.interact('play'); } this.stateMachine.transition('happy', { force: true, duration: 3000 }); } },
+        { icon: _ic('action','action_feed'), label: '喂零食',   action: async () => { if (!this.feedingAnimator.isPlaying) { this.behaviors.recordInteraction(); this.feedingAnimator.play(async () => { try { const r = await api.petRPC('character.care.feed', { itemId: 'ration_42' }); this.bubble.show(r?.ok ? ['好吃！~ 😋','喵呜~ 谢谢主人！','啊好香！还有吗！'][Math.floor(Math.random()*3)] : (r?.reason || '吃不下了...'), 3000); } catch { this.petSync.interact('feed'); this.bubble.show('好吃！~ 😋', 3000); } }); } } },
+        { icon: _ic('action','action_play'), label: '玩耍',     action: async () => { this.behaviors.recordInteraction(); try { const r = await api.petRPC('character.care.play', { actionId: 'pet_stroke' }); this.bubble.show(r?.ok ? ['好好玩！🎉','再来一次！','嘿嘿~ 开心！'][Math.floor(Math.random()*3)] : (r?.reason || '不想玩...'), 3000); } catch { this.petSync.interact('play'); } this.stateMachine.transition('happy', { force: true, duration: 3000 }); } },
         { icon: _ic('action','action_heal'), label: '治疗',     action: () => { _closeOtherPanels(this.nurturingPanel); this.nurturingPanel.open().then(() => this.nurturingPanel._switchTab('care')); } },
-        { icon: _ic('action','action_rest'), label: '休息',     action: async () => { this.behaviors.recordInteraction(); try { const r = await api.petRPC('pet.care.rest', { typeId: 'nap' }); this.bubble.show(r?.ok ? ['困了...zzZ','晚安~','让我眯一会儿...'][Math.floor(Math.random()*3)] : (r?.reason || '不困...'), 3000); } catch { this.petSync.interact('rest'); } this.stateMachine.transition('sleep', { force: true }); } },
+        { icon: _ic('action','action_rest'), label: '休息',     action: async () => { this.behaviors.recordInteraction(); try { const r = await api.petRPC('character.care.rest', { typeId: 'nap' }); this.bubble.show(r?.ok ? ['困了...zzZ','晚安~','让我眯一会儿...'][Math.floor(Math.random()*3)] : (r?.reason || '不困...'), 3000); } catch { this.petSync.interact('rest'); } this.stateMachine.transition('sleep', { force: true }); } },
         { icon: '📚', label: '去学习',     action: () => { _closeOtherPanels(this.skillPanel); this.skillPanel.openToLearning(); } },
         { type: 'separator' },
         { icon: '📌', label: '置顶',       action: () => api.toggleAlwaysOnTop?.() },
@@ -832,7 +832,7 @@ class OpenClawPet {
         // 记忆提取 — 通知服务端 MemoryGraphSystem
         const userMsg = this.chatPanel?.getLastUserMessage?.() || '';
         if (userMsg || msg) {
-          this.electronAPI.petRPC?.('pet.memory.extract', { userMsg, aiReply: msg });
+          this.electronAPI.petRPC?.('character.memory.extract', { userMsg, aiReply: msg });
         }
       }
     });
@@ -1001,7 +1001,7 @@ class OpenClawPet {
 
     // 存入技能图鉴（本地 + 服务端）
     this.skillSystem.addRealized({ skillName, skillTitle, skillDesc, skillContent, summary, domainName, realizedAt: Date.now() });
-    this.petSync._rpcSafe('pet.skill.addRealized', { skillName, skillTitle, skillDesc, skillContent, domainName });
+    this.petSync._rpcSafe('character.skill.addRealized', { skillName, skillTitle, skillDesc, skillContent, domainName });
 
     // 渲染冒泡（使用模板）
     const bubbleText = SkillSystem.renderBubble(bubble);

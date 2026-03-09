@@ -1,55 +1,55 @@
 /**
- * Gateway RPC handlers for the Pet Engine.
+ * Gateway RPC handlers for the Character Engine.
  *
  * Methods:
- *   pet.state.get           — full state snapshot
- *   pet.interact            — process user interaction
- *   pet.growth.info         — growth stage details
- *   pet.persona.get/set     — persona management
- *   pet.config.get          — combined state + persona + settings
- *   pet.config.set          — update pet settings (fsAccess toggle, etc.)
- *   pet.skill.record        — record domain activity
- *   pet.skill.tool          — record tool use
- *   pet.skill.attributes    — get skill attribute levels
- *   pet.skill.tools         — get tool almanac data
- *   pet.skill.realized      — get realized skills
- *   pet.skill.addRealized   — add a realized skill
- *   pet.learn.courses       — list available courses
- *   pet.learn.add           — add a course
- *   pet.learn.start         — start a lesson
- *   pet.learn.abort         — abort current lesson
- *   pet.learn.active        — get active lesson
- *   pet.learn.progress      — get category progress
- *   pet.learn.history       — get completed courses
- *   pet.achievement.list    — list all achievements
- *   pet.achievement.check   — trigger achievement check
- *   pet.level.info          — get level, EXP, title
- *   pet.care.feed           — use food item to feed pet
- *   pet.care.play           — perform play action
- *   pet.care.rest           — start resting
- *   pet.care.heal           — use healing item
- *   pet.chat.canChat        — check if pet has enough hunger to chat
- *   pet.chat.eval           — get chat eval state
- *   pet.chat.onMessage      — notify chat system of user message
- *   pet.chat.onToolCall     — notify chat system of tool call
- *   pet.inventory.list      — list backpack items
- *   pet.inventory.use       — use an inventory item
- *   pet.daily.tasks         — get today's tasks
- *   pet.daily.claim         — claim completed task reward
- *   pet.daily.streak        — get login streak info
- *   pet.shop.list           — get shop items with purchase limits
- *   pet.shop.buy            — buy an item (deduct coins, check limits)
- *   pet.wallet.info         — get star-coin balance & stats
- *   pet.memory.extract      — enqueue memory extraction from chat (userMsg + aiReply)
- *   pet.memory.clusters     — get memory cluster data (for UI panel)
+ *   character.state.get           — full state snapshot
+ *   character.interact            — process user interaction
+ *   character.growth.info         — growth stage details
+ *   character.persona.get/set     — persona management
+ *   character.config.get          — combined state + persona + settings
+ *   character.config.set          — update character settings (fsAccess toggle, etc.)
+ *   character.skill.record        — record domain activity
+ *   character.skill.tool          — record tool use
+ *   character.skill.attributes    — get skill attribute levels
+ *   character.skill.tools         — get tool almanac data
+ *   character.skill.realized      — get realized skills
+ *   character.skill.addRealized   — add a realized skill
+ *   character.learn.courses       — list available courses
+ *   character.learn.add           — add a course
+ *   character.learn.start         — start a lesson
+ *   character.learn.abort         — abort current lesson
+ *   character.learn.active        — get active lesson
+ *   character.learn.progress      — get category progress
+ *   character.learn.history       — get completed courses
+ *   character.achievement.list    — list all achievements
+ *   character.achievement.check   — trigger achievement check
+ *   character.level.info          — get level, EXP, title
+ *   character.care.feed           — use food item to feed character
+ *   character.care.play           — perform play action
+ *   character.care.rest           — start resting
+ *   character.care.heal           — use healing item
+ *   character.chat.canChat        — check if character has enough hunger to chat
+ *   character.chat.eval           — get chat eval state
+ *   character.chat.onMessage      — notify chat system of user message
+ *   character.chat.onToolCall     — notify chat system of tool call
+ *   character.inventory.list      — list backpack items
+ *   character.inventory.use       — use an inventory item
+ *   character.daily.tasks         — get today's tasks
+ *   character.daily.claim         — claim completed task reward
+ *   character.daily.streak        — get login streak info
+ *   character.shop.list           — get shop items with purchase limits
+ *   character.shop.buy            — buy an item (deduct coins, check limits)
+ *   character.wallet.info         — get star-coin balance & stats
+ *   character.memory.extract      — enqueue memory extraction from chat (userMsg + aiReply)
+ *   character.memory.clusters     — get memory cluster data (for UI panel)
  */
 
 import {
-  createPetEngine,
-  type PetEngine,
+  createCharacterEngine,
+  type CharacterEngine,
   type PersistenceStore,
   inferDomainFromText,
-} from "../../pet/index.js";
+} from "../../character/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import {
   registerInternalHook,
@@ -70,7 +70,7 @@ import type { MemoryClusterInput } from "../../memory/types.js";
 import { getGlobalPluginRegistry } from "../../plugins/hook-runner-global.js";
 import type { PluginHookRegistration } from "../../plugins/types.js";
 
-function getPetStorePath(): string {
+function getCharacterStorePath(): string {
   const base = resolveStateDir();
   const dir = path.join(base, "store", "pet");
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -78,7 +78,7 @@ function getPetStorePath(): string {
 }
 
 function createFileStore(): PersistenceStore {
-  const dir = getPetStorePath();
+  const dir = getCharacterStorePath();
 
   return {
     load(key: string): Record<string, unknown> | null {
@@ -95,7 +95,7 @@ function createFileStore(): PersistenceStore {
       try {
         fs.writeFileSync(file, JSON.stringify(data), "utf-8");
       } catch (e) {
-        console.error(`[pet:store] failed to save ${key}:`, e);
+        console.error(`[character:store] failed to save ${key}:`, e);
       }
     },
   };
@@ -114,9 +114,9 @@ function getFsAccessSettings() {
   };
 }
 
-// ─── LLM completion for pet subsystems (memory extraction, chat eval) ───
+// ─── LLM completion for character subsystems (memory extraction, chat eval) ───
 
-function resolvePetLLMConfig(): { baseUrl: string; apiKey: string; model: string } | null {
+function resolveCharacterLLMConfig(): { baseUrl: string; apiKey: string; model: string } | null {
   const cfg = loadConfig();
   const primaryModel = (cfg as Record<string, unknown> as { agents?: { defaults?: { model?: { primary?: string } } } }).agents?.defaults?.model?.primary;
   const providers = cfg.models?.providers;
@@ -137,8 +137,8 @@ function resolvePetLLMConfig(): { baseUrl: string; apiKey: string; model: string
   };
 }
 
-async function petLLMComplete(prompt: string): Promise<string | null> {
-  const llmCfg = resolvePetLLMConfig();
+async function characterLLMComplete(prompt: string): Promise<string | null> {
+  const llmCfg = resolveCharacterLLMConfig();
   if (!llmCfg) return null;
   try {
     const res = await fetch(`${llmCfg.baseUrl}/chat/completions`, {
@@ -184,16 +184,16 @@ const TOOL_DOMAIN_MAP: Record<string, string> = {
 
 // ─── Singleton engine instance ───
 
-let engine: PetEngine | null = null;
+let engine: CharacterEngine | null = null;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 let hooksRegistered = false;
 
 /**
- * Register OpenClaw hooks for companion engine integration.
- * - agent:bootstrap — inject PET_STATE.md into agent context
+ * Register OpenClaw hooks for character engine integration.
+ * - agent:bootstrap — inject CHARACTER_STATE.md into agent context
  * - after_tool_call — auto-record tool usage for skill tracking (all channels)
  */
-function registerCompanionHooks(eng: PetEngine): void {
+function registerCharacterHooks(eng: CharacterEngine): void {
   // ── agent:bootstrap — inject state context after SOUL.md ──
   registerInternalHook("agent:bootstrap", (event) => {
     const ctx = event.context as AgentBootstrapHookContext;
@@ -205,8 +205,8 @@ function registerCompanionHooks(eng: PetEngine): void {
     const soulIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "SOUL.md");
     const insertIdx = soulIdx >= 0 ? soulIdx + 1 : ctx.bootstrapFiles.length;
     ctx.bootstrapFiles.splice(insertIdx, 0, {
-      name: "PET_STATE.md" as WorkspaceBootstrapFile["name"],
-      path: "PET_STATE.md",
+      name: "CHARACTER_STATE.md" as WorkspaceBootstrapFile["name"],
+      path: "CHARACTER_STATE.md",
       content,
       missing: false,
     });
@@ -216,7 +216,7 @@ function registerCompanionHooks(eng: PetEngine): void {
   const registry = getGlobalPluginRegistry();
   if (registry) {
     registry.typedHooks.push({
-      pluginId: "companion-engine",
+      pluginId: "character-engine",
       hookName: "after_tool_call",
       handler: (event) => {
         const toolName = event.toolName;
@@ -231,15 +231,15 @@ function registerCompanionHooks(eng: PetEngine): void {
           engine.recordDomainActivity(domain, toolName, 1.0);
         }
       },
-      source: "companion-engine",
+      source: "character-engine",
     } as PluginHookRegistration<"after_tool_call">);
   }
 }
 
-function getEngine(): PetEngine {
+function getEngine(): CharacterEngine {
   if (!engine) {
     const store = createFileStore();
-    engine = createPetEngine({ store });
+    engine = createCharacterEngine({ store });
 
     // Tick the engine every 1 second
     tickInterval = setInterval(() => {
@@ -247,7 +247,7 @@ function getEngine(): PetEngine {
     }, 1000);
 
     // Wire up memory graph callbacks
-    engine.memoryGraph.setLLMComplete(petLLMComplete);
+    engine.memoryGraph.setLLMComplete(characterLLMComplete);
     engine.memoryGraph.setIndexCallback((clusters) => {
       const cfg = loadConfig();
       const agentId = resolveDefaultAgentId(cfg);
@@ -272,7 +272,7 @@ function getEngine(): PetEngine {
 
     // Wire up chat eval LLM callback
     engine.chatEval.setLLMEval(async (prompt) => {
-      const raw = await petLLMComplete(prompt);
+      const raw = await characterLLMComplete(prompt);
       if (!raw) return { intent: "neutral" };
       try {
         const match = raw.match(/\{[\s\S]*\}/);
@@ -287,7 +287,7 @@ function getEngine(): PetEngine {
     // Register hooks once
     if (!hooksRegistered) {
       hooksRegistered = true;
-      registerCompanionHooks(engine);
+      registerCharacterHooks(engine);
     }
   }
   return engine;
@@ -295,10 +295,10 @@ function getEngine(): PetEngine {
 
 
 /**
- * Returns pet chat gate helpers for use by the chat.send handler.
- * Returns null if the pet engine has not been initialized.
+ * Returns character chat gate helpers for use by the chat.send handler.
+ * Returns null if the character engine has not been initialized.
  */
-export function getPetChatGate(): {
+export function getCharacterChatGate(): {
   canChat: () => { ok: boolean; hunger: number; minRequired: number };
   onMessage: (text: string) => void;
 } | null {
@@ -310,7 +310,7 @@ export function getPetChatGate(): {
   };
 }
 
-export function shutdownPetEngine(): void {
+export function shutdownCharacterEngine(): void {
   if (tickInterval) {
     clearInterval(tickInterval);
     tickInterval = null;
@@ -321,7 +321,7 @@ export function shutdownPetEngine(): void {
 // ─── Helper ───
 
 function safeHandler(
-  fn: (engine: PetEngine, params: Record<string, unknown>) => unknown,
+  fn: (engine: CharacterEngine, params: Record<string, unknown>) => unknown,
 ): (opts: { params: Record<string, unknown>; respond: Function }) => void {
   return ({ params, respond }) => {
     try {
@@ -335,12 +335,12 @@ function safeHandler(
 
 // ─── RPC Handlers ───
 
-export const petHandlers: GatewayRequestHandlers = {
+export const characterHandlers: GatewayRequestHandlers = {
   // ── State ──
 
-  "pet.state.get": safeHandler((e) => e.getState()),
+  "character.state.get": safeHandler((e) => e.getState()),
 
-  "pet.interact": ({ params, respond }) => {
+  "character.interact": ({ params, respond }) => {
     const action = params?.action as string | undefined;
     if (!action) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'action' param"));
@@ -355,7 +355,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.growth.info": safeHandler((e) => {
+  "character.growth.info": safeHandler((e) => {
     const g = e.growth;
     return {
       points: g.points,
@@ -368,12 +368,12 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Persona ──
 
-  "pet.persona.get": safeHandler((e) => ({
+  "character.persona.get": safeHandler((e) => ({
     base: e.persona.base,
     resolved: e.persona.resolve(),
   })),
 
-  "pet.persona.set": ({ params, respond }) => {
+  "character.persona.set": ({ params, respond }) => {
     const persona = params?.persona as string | undefined;
     if (!persona) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'persona' param"));
@@ -390,7 +390,7 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Config ──
 
-  "pet.config.get": safeHandler((e) => ({
+  "character.config.get": safeHandler((e) => ({
     ...e.getState(),
     persona: { base: e.persona.base, resolved: e.persona.resolve() },
     settings: {
@@ -398,7 +398,7 @@ export const petHandlers: GatewayRequestHandlers = {
     },
   })),
 
-  "pet.config.set": async ({ params, respond }) => {
+  "character.config.set": async ({ params, respond }) => {
     try {
       const settings = params?.settings as Record<string, unknown> | undefined;
       if (!settings) {
@@ -429,7 +429,7 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Skills ──
 
-  "pet.skill.record": ({ params, respond }) => {
+  "character.skill.record": ({ params, respond }) => {
     const domain = (params?.domain as string) || (params?.text ? inferDomainFromText(params.text as string) : null);
     if (!domain) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'domain' or 'text' param"));
@@ -444,7 +444,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.skill.tool": ({ params, respond }) => {
+  "character.skill.tool": ({ params, respond }) => {
     const toolName = params?.toolName as string;
     if (!toolName) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'toolName' param"));
@@ -458,13 +458,13 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.skill.attributes": safeHandler((e) => e.skills.getAttributes()),
+  "character.skill.attributes": safeHandler((e) => e.skills.getAttributes()),
 
-  "pet.skill.tools": safeHandler((e) => e.skills.getToolData()),
+  "character.skill.tools": safeHandler((e) => e.skills.getToolData()),
 
-  "pet.skill.realized": safeHandler((e) => e.skills.getRealizedSkills()),
+  "character.skill.realized": safeHandler((e) => e.skills.getRealizedSkills()),
 
-  "pet.skill.addRealized": ({ params, respond }) => {
+  "character.skill.addRealized": ({ params, respond }) => {
     try {
       const e = getEngine();
       e.skills.addRealized({
@@ -483,9 +483,9 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Learning ──
 
-  "pet.learn.courses": safeHandler((e) => e.learning.getCourses()),
+  "character.learn.courses": safeHandler((e) => e.learning.getCourses()),
 
-  "pet.learn.add": ({ params, respond }) => {
+  "character.learn.add": ({ params, respond }) => {
     try {
       const e = getEngine();
       const course = e.learning.addCourse({
@@ -499,7 +499,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.learn.start": ({ params, respond }) => {
+  "character.learn.start": ({ params, respond }) => {
     const courseId = params?.courseId as string;
     if (!courseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'courseId' param"));
@@ -513,14 +513,14 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.learn.abort": safeHandler((e) => {
+  "character.learn.abort": safeHandler((e) => {
     e.learning.abortLesson();
     return { ok: true };
   }),
 
-  "pet.learn.active": safeHandler((e) => e.learning.getActiveLesson()),
+  "character.learn.active": safeHandler((e) => e.learning.getActiveLesson()),
 
-  "pet.learn.progress": ({ params, respond }) => {
+  "character.learn.progress": ({ params, respond }) => {
     const categoryName = params?.categoryName as string;
     if (!categoryName) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'categoryName' param"));
@@ -533,13 +533,13 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.learn.history": safeHandler((e) => e.learning.getHistory()),
+  "character.learn.history": safeHandler((e) => e.learning.getHistory()),
 
   // ── Achievements ──
 
-  "pet.achievement.list": safeHandler((e) => e.achievements.getAll()),
+  "character.achievement.list": safeHandler((e) => e.achievements.getAll()),
 
-  "pet.achievement.check": safeHandler((e) => {
+  "character.achievement.check": safeHandler((e) => {
     const newlyUnlocked = e.achievements.check();
     return {
       newlyUnlocked: newlyUnlocked.map((a) => ({ id: a.id, name: a.name, icon: a.icon })),
@@ -548,11 +548,11 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Level ──
 
-  "pet.level.info": safeHandler((e) => e.levels.getInfo()),
+  "character.level.info": safeHandler((e) => e.levels.getInfo()),
 
   // ── Care ──
 
-  "pet.care.feed": ({ params, respond }) => {
+  "character.care.feed": ({ params, respond }) => {
     const itemId = (params?.itemId as string) ?? "ration_42";
     try {
       const e = getEngine();
@@ -563,7 +563,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.care.play": ({ params, respond }) => {
+  "character.care.play": ({ params, respond }) => {
     const actionId = params?.actionId as string;
     if (!actionId) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'actionId' param"));
@@ -578,7 +578,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.care.rest": ({ params, respond }) => {
+  "character.care.rest": ({ params, respond }) => {
     const typeId = (params?.typeId as string) ?? "nap";
     try {
       const e = getEngine();
@@ -589,7 +589,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.care.heal": ({ params, respond }) => {
+  "character.care.heal": ({ params, respond }) => {
     const itemId = params?.itemId as string;
     if (!itemId) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'itemId' param"));
@@ -606,11 +606,11 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Chat ──
 
-  "pet.chat.canChat": safeHandler((e) => e.chatEval.canChat()),
+  "character.chat.canChat": safeHandler((e) => e.chatEval.canChat()),
 
-  "pet.chat.eval": safeHandler((e) => e.chatEval.getState()),
+  "character.chat.eval": safeHandler((e) => e.chatEval.getState()),
 
-  "pet.chat.onMessage": ({ params, respond }) => {
+  "character.chat.onMessage": ({ params, respond }) => {
     const text = (params?.text as string) ?? "";
     try {
       const e = getEngine();
@@ -621,20 +621,20 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.chat.onToolCall": safeHandler((e) => {
+  "character.chat.onToolCall": safeHandler((e) => {
     e.chatEval.onToolCall();
     return { ok: true };
   }),
 
   // ── Inventory ──
 
-  "pet.inventory.list": safeHandler((e) => ({
+  "character.inventory.list": safeHandler((e) => ({
     items: e.inventory.list(),
     capacity: e.inventory.capacity,
     usedSlots: e.inventory.usedSlots,
   })),
 
-  "pet.inventory.use": ({ params, respond }) => {
+  "character.inventory.use": ({ params, respond }) => {
     const itemId = params?.itemId as string;
     if (!itemId) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'itemId' param"));
@@ -655,7 +655,7 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Daily Tasks ──
 
-  "pet.daily.tasks": async ({ params: _params, respond }) => {
+  "character.daily.tasks": async ({ params: _params, respond }) => {
     try {
       const e = getEngine();
       const tasks = await e.dailyTasks.ensureTodayTasks();
@@ -665,7 +665,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.daily.claim": ({ params, respond }) => {
+  "character.daily.claim": ({ params, respond }) => {
     const taskId = params?.taskId as string;
     if (!taskId) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'taskId' param"));
@@ -680,16 +680,16 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.daily.streak": safeHandler((e) => e.login.getInfo()),
+  "character.daily.streak": safeHandler((e) => e.login.getInfo()),
 
   // ── Shop & Wallet ──
 
-  "pet.shop.list": safeHandler((e) => ({
+  "character.shop.list": safeHandler((e) => ({
     items: e.shop.listShop(),
     wallet: e.shop.getWallet(),
   })),
 
-  "pet.shop.buy": ({ params, respond }) => {
+  "character.shop.buy": ({ params, respond }) => {
     const itemId = params?.itemId as string;
     if (!itemId) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'itemId' param"));
@@ -705,11 +705,11 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.wallet.info": safeHandler((e) => e.shop.getWallet()),
+  "character.wallet.info": safeHandler((e) => e.shop.getWallet()),
 
   // ── Memory ──
 
-  "pet.memory.extract": ({ params, respond }) => {
+  "character.memory.extract": ({ params, respond }) => {
     try {
       const userMsg = (params?.userMsg as string) ?? "";
       const aiReply = (params?.aiReply as string) ?? "";
@@ -725,7 +725,7 @@ export const petHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "pet.memory.clusters": safeHandler((e) => ({
+  "character.memory.clusters": safeHandler((e) => ({
     clusters: e.memoryGraph.getClusters(),
     ...e.memoryGraph.getStatus(),
   })),

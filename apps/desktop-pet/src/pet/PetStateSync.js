@@ -3,7 +3,7 @@
  * Server-side Pet Engine state synchronization bridge.
  *
  * Replaces direct client-side mood/hunger/health/intimacy management
- * with server-authoritative state via pet.* RPC calls.
+ * with server-authoritative state via character.* RPC calls.
  *
  * When connected:
  *   - Interactions route to server (pet.interact)
@@ -44,7 +44,7 @@ export class PetStateSync {
    */
   async init() {
     try {
-      const state = await this._rpc('pet.state.get');
+      const state = await this._rpc('character.state.get');
       if (state && !state._error) {
         this._applyState(state);
         this._connected = true;
@@ -66,25 +66,25 @@ export class PetStateSync {
   async interact(action, customRewards) {
     const params = { action };
     if (customRewards) params.rewards = customRewards;
-    const state = await this._rpcSafe('pet.interact', params);
+    const state = await this._rpcSafe('character.interact', params);
     if (state) this._applyState(state);
     return state;
   }
 
   async recordTool(toolName) {
-    return this._rpcSafe('pet.skill.tool', { toolName });
+    return this._rpcSafe('character.skill.tool', { toolName });
   }
 
   async recordDomain(domain, context, weight) {
     const params = { domain };
     if (context) params.context = context;
     if (weight != null) params.weight = weight;
-    return this._rpcSafe('pet.skill.record', params);
+    return this._rpcSafe('character.skill.record', params);
   }
 
   async recordDomainFromText(text) {
     if (typeof text !== 'string' || !text) return;
-    return this._rpcSafe('pet.skill.record', { text });
+    return this._rpcSafe('character.skill.record', { text });
   }
 
   // ── Cached getters (synchronous, for UI) ──
@@ -135,7 +135,7 @@ export class PetStateSync {
   }
 
   async _poll() {
-    const state = await this._rpcSafe('pet.state.get');
+    const state = await this._rpcSafe('character.state.get');
     if (state) {
       this._applyState(state);
       if (!this._connected) {

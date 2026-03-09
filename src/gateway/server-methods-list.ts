@@ -100,32 +100,32 @@ const BASE_METHODS = [
   "chat.history",
   "chat.abort",
   "chat.send",
-  // Pet engine — state & interaction
-  "pet.state.get",
-  "pet.interact",
-  "pet.growth.info",
-  "pet.persona.get",
-  "pet.persona.set",
-  "pet.config.get",
-  "pet.config.set",
-  // Pet engine — skills
-  "pet.skill.record",
-  "pet.skill.tool",
-  "pet.skill.attributes",
-  "pet.skill.tools",
-  "pet.skill.realized",
-  "pet.skill.addRealized",
-  // Pet engine — learning
-  "pet.learn.courses",
-  "pet.learn.add",
-  "pet.learn.start",
-  "pet.learn.abort",
-  "pet.learn.active",
-  "pet.learn.progress",
-  "pet.learn.history",
-  // Pet engine — achievements
-  "pet.achievement.list",
-  "pet.achievement.check",
+  // Character engine — state & interaction
+  "character.state.get",
+  "character.interact",
+  "character.growth.info",
+  "character.persona.get",
+  "character.persona.set",
+  "character.config.get",
+  "character.config.set",
+  // Character engine — skills
+  "character.skill.record",
+  "character.skill.tool",
+  "character.skill.attributes",
+  "character.skill.tools",
+  "character.skill.realized",
+  "character.skill.addRealized",
+  // Character engine — learning
+  "character.learn.courses",
+  "character.learn.add",
+  "character.learn.start",
+  "character.learn.abort",
+  "character.learn.active",
+  "character.learn.progress",
+  "character.learn.history",
+  // Character engine — achievements
+  "character.achievement.list",
+  "character.achievement.check",
 ];
 
 export function listGatewayMethods(): string[] {
@@ -153,6 +153,6 @@ export const GATEWAY_EVENTS = [
   "exec.approval.requested",
   "exec.approval.resolved",
   GATEWAY_EVENT_UPDATE_AVAILABLE,
-  "pet.state",
-  "pet.event",
+  "character.state",
+  "character.event",
 ];
