@@ -146,6 +146,44 @@ html, body {
   z-index: 20;
 }
 
+/* ===== 气泡方向 — 上方空间不足时切换到左/右侧 ===== */
+
+/* 气泡在宠物左侧（窗口靠近屏幕右边缘时） */
+body.bubble-left #pet-area #bubble-container {
+  left: auto;
+  right: 256px;
+  bottom: 100px;
+  width: 200px;
+}
+
+body.bubble-left #pet-area .stream-segments-container {
+  left: auto;
+  right: 256px;
+  top: auto;
+  bottom: 50px;
+  width: 220px;
+  height: 300px;
+  overflow: visible;
+}
+
+/* 气泡在宠物右侧（窗口靠近屏幕左边缘时） */
+body.bubble-right #pet-area #bubble-container {
+  left: 256px;
+  right: auto;
+  bottom: 100px;
+  width: 200px;
+}
+
+body.bubble-right #pet-area .stream-segments-container {
+  left: 256px;
+  right: auto;
+  top: auto;
+  bottom: 50px;
+  width: 220px;
+  height: 300px;
+  overflow: visible;
+}
+
 /* ===== 面板共用基础 — 手绘线条风 ===== */
 .panel-base {
   background: var(--paper);

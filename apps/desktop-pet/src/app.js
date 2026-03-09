@@ -513,7 +513,8 @@ class OpenClawPet {
 
     // 7. 交互处理器
     this.dragHandler = new DragHandler(
-      this.canvas, this.stateMachine, this.behaviors, this.electronAPI
+      this.canvas, this.stateMachine, this.behaviors, this.electronAPI,
+      { onDragEnd: ({ pos, screen }) => this._updateBubbleDirection(pos, screen) }
     );
 
     this.clickHandler = new ClickHandler(
@@ -600,6 +601,9 @@ class OpenClawPet {
       this.bubble.show(greeting, 4000);
       this.stateMachine.transition('happy', { force: true, duration: 3000 });
     }, 800);
+
+    // 启动时初始化气泡方向
+    this._updateBubbleDirection();
 
     console.log('✅ OpenClaw Pet ready!');
   }
@@ -1119,6 +1123,47 @@ class OpenClawPet {
       }
     } catch {} finally {
       this._updatingSide = false;
+    }
+  }
+
+  /**
+   * 根据窗口位置判断气泡显示方向。
+   * 当窗口上方空间不足 200px 时，气泡切换到左侧或右侧显示。
+   * 可以直接传入 pos/screen（拖拽结束时已获取），也可以不传（方法内自行查询）。
+   * @param {object} [pos]    - { x, y } 窗口左上角屏幕坐标
+   * @param {object} [screen] - { width, height } 屏幕尺寸
+   */
+  async _updateBubbleDirection(pos, screen) {
+    try {
+      if (!pos) {
+        if (!this.electronAPI?.getWindowPosition) return;
+        pos = await this.electronAPI.getWindowPosition();
+      }
+      if (!screen) {
+        if (!this.electronAPI?.getScreenSize) return;
+        screen = await this.electronAPI.getScreenSize();
+      }
+
+      const BUBBLE_NEED_H = 200; // 气泡至少需要 200px 上方空间
+      const BUBBLE_NEED_W = 220; // 气泡宽度（含裕量）
+
+      if (pos.y >= BUBBLE_NEED_H) {
+        // 上方空间足够 — 正常显示
+        document.body.classList.remove('bubble-left', 'bubble-right');
+      } else {
+        // 上方空间不足 — 切换到左侧或右侧
+        const leftSpace = pos.x;
+        const rightSpace = screen.width - pos.x - window.innerWidth;
+        if (leftSpace >= BUBBLE_NEED_W) {
+          document.body.classList.add('bubble-left');
+          document.body.classList.remove('bubble-right');
+        } else {
+          document.body.classList.add('bubble-right');
+          document.body.classList.remove('bubble-left');
+        }
+      }
+    } catch {
+      // IPC 查询失败时保持现有方向，不做变更
     }
   }
 

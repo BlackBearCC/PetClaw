@@ -14,12 +14,15 @@ export class DragHandler {
    * @param {import('../pet/StateMachine').StateMachine} stateMachine
    * @param {import('../pet/Behaviors').Behaviors} behaviors
    * @param {object} electronAPI - preload 暴露的 Electron API
+   * @param {object} [options] - 可选配置
+   * @param {function} [options.onDragEnd] - 拖拽结束后回调，传入 { pos, screen }
    */
-  constructor(element, stateMachine, behaviors, electronAPI) {
+  constructor(element, stateMachine, behaviors, electronAPI, options = {}) {
     this.element = element;
     this.sm = stateMachine;
     this.behaviors = behaviors;
     this.electronAPI = electronAPI;
+    this._onDragEndCallback = options.onDragEnd || null;
 
     this.isDragging = false;
     this._isMouseDown = false;
@@ -104,6 +107,10 @@ export class DragHandler {
         this.behaviors.setPosition(snapX, snapY);
         this.behaviors.setEdgeSnapped(snapped);
         this.sm.transition(snapped ? 'edge_idle' : 'idle', { force: true });
+
+        if (this._onDragEndCallback) {
+          this._onDragEndCallback({ pos: { x: snapX, y: snapY }, screen });
+        }
       } catch {
         this.sm.transition('idle', { force: true });
       }
