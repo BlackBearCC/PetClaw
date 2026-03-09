@@ -218,6 +218,7 @@ body.bubble-right #pet-area .stream-segments-container {
   opacity: 1;
   transform: scale(1) translateX(0);
   pointer-events: all;
+  z-index: 30;
 }
 
 .chat-header {
@@ -1574,11 +1575,6 @@ body.panels-right #memory-graph-panel.open,
 body.panels-right #nurturing-panel.open {
   transform: scale(1) translateX(0);
 }
-body.panels-right .md-panel {
-  right: auto;
-  left: 570px;
-}
-
 /* ===== 动画 ===== */
 @keyframes petAppear {
   from { opacity: 0; transform: scale(0.5) translateY(20px); }

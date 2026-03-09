@@ -488,6 +488,7 @@ class OpenClawPet {
     this.skillPanel.onStateChange = syncWin;
     if (this.nurturingPanel) this.nurturingPanel.onStateChange = syncWin;
     if (this.memoryGraphPanel) this.memoryGraphPanel.onStateChange = syncWin;
+    if (this.bottomChatInput) this.bottomChatInput.onStateChange = syncWin;
 
     // 6j. 工作区感知
     this.workspaceWatcher = new WorkspaceWatcher();
@@ -693,7 +694,7 @@ class OpenClawPet {
 
   async _doSyncWindowSize() {
     if (!this.electronAPI) return;
-    const panels = [this.chatPanel, this.settingsPanel, this.skillPanel, this.memoryGraphPanel, this.nurturingPanel];
+    const panels = [this.chatPanel, this.settingsPanel, this.skillPanel, this.memoryGraphPanel, this.nurturingPanel, this.bottomChatInput];
     const anyOpen = panels.some(p => p?.isOpen);
 
     if (!anyOpen) {
