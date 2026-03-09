@@ -72,9 +72,17 @@ import type { PluginHookRegistration } from "../../plugins/types.js";
 
 function getCharacterStorePath(): string {
   const base = resolveStateDir();
-  const dir = path.join(base, "store", "pet");
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const newDir = path.join(base, "store", "character");
+  // Migrate legacy store/pet/ → store/character/
+  if (!fs.existsSync(newDir)) {
+    const legacyDir = path.join(base, "store", "pet");
+    if (fs.existsSync(legacyDir)) {
+      fs.renameSync(legacyDir, newDir);
+    } else {
+      fs.mkdirSync(newDir, { recursive: true });
+    }
+  }
+  return newDir;
 }
 
 function createFileStore(): PersistenceStore {
