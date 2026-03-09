@@ -83,6 +83,7 @@ export class PetStateSync {
   }
 
   async recordDomainFromText(text) {
+    if (typeof text !== 'string' || !text) return;
     return this._rpcSafe('pet.skill.record', { text });
   }
 

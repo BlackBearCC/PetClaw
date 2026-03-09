@@ -1,0 +1,21 @@
+{
+  "frameSize": 960,
+  "cols": 10,
+  "fps": 12,
+  "type": "state",
+  "name": "study",
+  "sections": {
+    "enter": [
+      0,
+      19
+    ],
+    "loop": [
+      20,
+      39
+    ],
+    "exit": [
+      40,
+      59
+    ]
+  }
+}

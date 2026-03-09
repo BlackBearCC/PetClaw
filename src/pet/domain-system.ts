@@ -83,7 +83,7 @@ export function isValidDomain(name: string): boolean {
 
 /** Infer the most likely domain from text using keyword matching. Returns null if no match. */
 export function inferDomainFromText(text: string): string | null {
-  if (!text) return null;
+  if (!text || typeof text !== "string") return null;
   const t = text.toLowerCase();
 
   let best: string | null = null;
