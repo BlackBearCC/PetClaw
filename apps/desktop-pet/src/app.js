@@ -573,7 +573,7 @@ class OpenClawPet {
         mood:   this.petSync.getMood(),
         health: this.petSync.getHealth(),
       }), {
-        onOpen:  () => this.electronAPI?.setIgnoreMouse(false),
+        onOpen:  () => this._setIgnoreMouse(false),
         onClose: () => this._updateMousePassthrough(),
       });
     }

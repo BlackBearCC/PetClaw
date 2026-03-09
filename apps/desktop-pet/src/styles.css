@@ -208,6 +208,7 @@ body.bubble-right #pet-area .stream-segments-container {
   transform: scale(0.8) translateX(20px);
   transition: all 0.25s ease-out;
   pointer-events: none;
+  z-index: 30;
 }
 
 #chat-panel.open {
@@ -216,7 +217,6 @@ body.bubble-right #pet-area .stream-segments-container {
   opacity: 1;
   transform: scale(1) translateX(0);
   pointer-events: all;
-  z-index: 30;
 }
 
 .chat-header {
