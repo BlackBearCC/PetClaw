@@ -46,6 +46,7 @@
 | [desktop-interaction](desktop-interaction.md) | 桌面物理交互 (窗口感知/鼠标/重力/拖拽) |
 | [autonomous-behavior](autonomous-behavior.md) | 自主行为系统 (状态机/时间感知/用户活动感知) |
 | [ai-integration](ai-integration.md) | AI 人格集成 (状态前缀注入/挡位分段/聊天反哺/主动对话) |
+| [openclaw-integration](openclaw-integration.md) | OpenClaw 深度集成 (Hook 自动化/记忆召回/Cron 主动对话/AI 自主工具) |
 | [tech-plan](tech-plan.md) | 技术实现规划 + RPC + 持久化 + 优先级 |
 
 ## 实现优先级

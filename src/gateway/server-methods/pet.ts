@@ -67,6 +67,8 @@ import { loadConfig, readConfigFileSnapshotForWrite, writeConfigFile } from "../
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryClusterInput } from "../../memory/types.js";
+import { getGlobalPluginRegistry } from "../../plugins/hook-runner-global.js";
+import type { PluginHookRegistration } from "../../plugins/types.js";
 
 function getPetStorePath(): string {
   const base = resolveStateDir();
@@ -162,11 +164,77 @@ async function petLLMComplete(prompt: string): Promise<string | null> {
   }
 }
 
+// ─── Tool → Domain mapping (for automatic skill tracking) ───
+
+const TOOL_DOMAIN_MAP: Record<string, string> = {
+  web_search: "研究",
+  search: "研究",
+  memory_search: "研究",
+  code_execute: "技术",
+  code_interpreter: "技术",
+  read: "技术",
+  edit: "技术",
+  write: "技术",
+  bash: "技术",
+  image_gen: "创意",
+  openai_image_gen: "创意",
+  send: "沟通",
+  push: "沟通",
+};
+
 // ─── Singleton engine instance ───
 
 let engine: PetEngine | null = null;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
-let bootstrapHookRegistered = false;
+let hooksRegistered = false;
+
+/**
+ * Register OpenClaw hooks for companion engine integration.
+ * - agent:bootstrap — inject PET_STATE.md into agent context
+ * - after_tool_call — auto-record tool usage for skill tracking (all channels)
+ */
+function registerCompanionHooks(eng: PetEngine): void {
+  // ── agent:bootstrap — inject state context after SOUL.md ──
+  registerInternalHook("agent:bootstrap", (event) => {
+    const ctx = event.context as AgentBootstrapHookContext;
+    if (!Array.isArray(ctx.bootstrapFiles) || !engine) return;
+
+    const content = engine.getPromptContext();
+    if (!content.trim()) return;
+
+    const soulIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "SOUL.md");
+    const insertIdx = soulIdx >= 0 ? soulIdx + 1 : ctx.bootstrapFiles.length;
+    ctx.bootstrapFiles.splice(insertIdx, 0, {
+      name: "PET_STATE.md" as WorkspaceBootstrapFile["name"],
+      path: "PET_STATE.md",
+      content,
+      missing: false,
+    });
+  });
+
+  // ── after_tool_call — auto-record tool usage across all channels ──
+  const registry = getGlobalPluginRegistry();
+  if (registry) {
+    registry.typedHooks.push({
+      pluginId: "companion-engine",
+      hookName: "after_tool_call",
+      handler: (event) => {
+        const toolName = event.toolName;
+        if (!toolName || !engine) return;
+
+        // Record tool → skill almanac + achievements + daily task counter
+        engine.recordToolUse(toolName);
+
+        // Map tool → domain for attribute XP
+        const domain = TOOL_DOMAIN_MAP[toolName];
+        if (domain) {
+          engine.recordDomainActivity(domain, toolName, 1.0);
+        }
+      },
+      source: "companion-engine",
+    } as PluginHookRegistration<"after_tool_call">);
+  }
+}
 
 function getEngine(): PetEngine {
   if (!engine) {
@@ -216,29 +284,10 @@ function getEngine(): PetEngine {
       }
     });
 
-    // Register the agent:bootstrap hook once to inject PET_STATE.md
-    if (!bootstrapHookRegistered) {
-      bootstrapHookRegistered = true;
-      registerInternalHook("agent:bootstrap", (event) => {
-        const ctx = event.context as AgentBootstrapHookContext;
-        if (!Array.isArray(ctx.bootstrapFiles)) return;
-
-        const eng = engine;
-        if (!eng) return;
-
-        const petContent = eng.getPromptContext();
-        if (!petContent.trim()) return;
-
-        // Insert PET_STATE.md right after SOUL.md (or append at end)
-        const soulIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "SOUL.md");
-        const insertIdx = soulIdx >= 0 ? soulIdx + 1 : ctx.bootstrapFiles.length;
-        ctx.bootstrapFiles.splice(insertIdx, 0, {
-          name: "PET_STATE.md" as WorkspaceBootstrapFile["name"],
-          path: "PET_STATE.md",
-          content: petContent,
-          missing: false,
-        });
-      });
+    // Register hooks once
+    if (!hooksRegistered) {
+      hooksRegistered = true;
+      registerCompanionHooks(engine);
     }
   }
   return engine;
