@@ -921,4 +921,100 @@ export const characterHandlers: GatewayRequestHandlers = {
     clusters: e.memoryGraph.getClusters(),
     ...e.memoryGraph.getStatus(),
   })),
+
+  // ── Todo System ──
+
+  "character.todo.list": safeHandler((e) => ({
+    todos: e.todos.getTodos(),
+    stats: e.todos.getStats(),
+  })),
+
+  "character.todo.create": ({ params, respond }) => {
+    const title = params?.title as string;
+    const description = params?.description as string;
+    const category = params?.category as string;
+    const source = params?.source as string;
+
+    if (!title) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'title' param"));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      const todo = e.todos.createTodo({
+        title,
+        description,
+        category: category as "task" | "reminder" | "follow_up" | "learning",
+        source,
+      });
+      (respond as Function)(true, { ok: true, todo, stats: e.todos.getStats() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.todo.complete": ({ params, respond }) => {
+    const todoId = params?.todoId as string;
+    if (!todoId) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'todoId' param"));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      const result = e.todos.completeTodo(todoId);
+      (respond as Function)(result.ok, { ...result, stats: e.todos.getStats() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.todo.verify": ({ params, respond }) => {
+    const todoId = params?.todoId as string;
+    if (!todoId) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'todoId' param"));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      const result = e.todos.verifyTodo(todoId);
+
+      // Award rewards if verification successful
+      if (result.ok && result.rewards) {
+        if (result.rewards.exp) {
+          e.levels.gainExp(result.rewards.exp, "todo_verified");
+        }
+        if (result.rewards.coins) {
+          e.shop.earnCoins(result.rewards.coins, "todo_verified");
+        }
+      }
+
+      (respond as Function)(result.ok, { ...result, stats: e.todos.getStats() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.todo.delete": ({ params, respond }) => {
+    const todoId = params?.todoId as string;
+    if (!todoId) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'todoId' param"));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      const result = e.todos.deleteTodo(todoId);
+      (respond as Function)(result.ok, { ...result, stats: e.todos.getStats() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.todo.regenerate": safeHandler((e) => {
+    const result = e.todos.regenerateTodos();
+    return { ok: true, ...result, stats: e.todos.getStats() };
+  }),
 };
