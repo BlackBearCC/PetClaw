@@ -49,6 +49,7 @@ import {
   type CharacterEngine,
   type PersistenceStore,
   inferDomainFromText,
+  type SoulAction,
 } from "../../character/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import {
@@ -247,11 +248,22 @@ function registerCharacterHooks(eng: CharacterEngine): void {
     });
   });
 
-  // ── message:received — cache user message for memory extraction pairing ──
+  // ── message:received — cache user message + domain keyword inference ──
   registerInternalHook("message:received", (event) => {
     const ctx = event.context as { content?: string };
-    if (ctx.content && event.sessionKey) {
+    if (!ctx.content) return;
+
+    // Cache for memory extraction pairing
+    if (event.sessionKey) {
       setLastUserMessage(event.sessionKey, ctx.content);
+    }
+
+    // Domain keyword inference — auto-track user activity domains
+    if (engine) {
+      const domain = inferDomainFromText(ctx.content);
+      if (domain) {
+        engine.recordDomainActivity(domain, ctx.content, 0.3);
+      }
     }
   });
 
@@ -336,6 +348,20 @@ function getEngine(): CharacterEngine {
       } catch {
         return { intent: "neutral" };
       }
+    });
+
+    // Wire up Agent Scheduler (World Agent + Soul Agent)
+    engine.agentScheduler.setLLMComplete(characterLLMComplete);
+    engine.agentScheduler.setOnSoulAction((action: SoulAction) => {
+      console.log(`[character:soul-agent] action: ${action.type}`, action.text ?? "");
+      // Emit event so gateway/client can react (bubble, animation, etc.)
+      engine?.bus.emit("soul:action", {
+        type: action.type,
+        text: action.text,
+        careAction: action.careAction,
+        emotion: action.emotion,
+        memory: action.memory,
+      });
     });
 
     // Register hooks once

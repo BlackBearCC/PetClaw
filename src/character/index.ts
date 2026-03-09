@@ -62,6 +62,19 @@ export {
   type MemoryFragment,
 } from "./memory-graph.js";
 
+// World events
+export {
+  WorldEventSystem,
+  type WorldEvent,
+} from "./world-event-system.js";
+
+// Agent scheduler (World Agent + Soul Agent)
+export {
+  AgentScheduler,
+  type SoulAction,
+  type SoulActionCallback,
+} from "./agent-scheduler.js";
+
 // Domain definitions
 export {
   DOMAINS,

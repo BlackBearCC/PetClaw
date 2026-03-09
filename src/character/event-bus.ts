@@ -42,6 +42,10 @@ export type CharacterEventMap = {
   'shop:coin-earn': { amount: number; source: string; balance: number };
   /** Item purchased from shop */
   'shop:buy': { itemId: string; qty: number; totalCost: number; balance: number };
+  /** Soul Agent decided on an action */
+  'soul:action': { type: string; text?: string; careAction?: string; emotion?: string; memory?: { fact: string; category: string } };
+  /** World Agent generated an event */
+  'world:event': { id: string; type: string; title: string; desc: string };
 };
 
 type EventHandler<T> = (data: T) => void;
