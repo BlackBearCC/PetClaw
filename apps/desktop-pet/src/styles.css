@@ -144,16 +144,17 @@ html, body {
   width: 200px;
   pointer-events: none;
   z-index: 20;
+  transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 
 /* ===== 气泡方向 — 上方空间不足时切换到左/右侧 ===== */
+/* 用 transform 代替 left/right/bottom 覆盖，保证 transition 可以插值 */
+/* translateX: bubble-left=-205px (5px→-200px), bubble-right=+251px (5px→256px) */
+/* translateY: +160px (bottom:260px→100px, 向下移) */
 
 /* 气泡在宠物左侧（窗口靠近屏幕右边缘时） */
 body.bubble-left #pet-area #bubble-container {
-  left: auto;
-  right: 256px;
-  bottom: 100px;
-  width: 200px;
+  transform: translate(-205px, 160px);
 }
 
 body.bubble-left #pet-area .stream-segments-container {
@@ -168,10 +169,7 @@ body.bubble-left #pet-area .stream-segments-container {
 
 /* 气泡在宠物右侧（窗口靠近屏幕左边缘时） */
 body.bubble-right #pet-area #bubble-container {
-  left: 256px;
-  right: auto;
-  bottom: 100px;
-  width: 200px;
+  transform: translate(251px, 160px);
 }
 
 body.bubble-right #pet-area .stream-segments-container {
@@ -218,6 +216,7 @@ body.bubble-right #pet-area .stream-segments-container {
   opacity: 1;
   transform: scale(1) translateX(0);
   pointer-events: all;
+  z-index: 30;
 }
 
 .chat-header {
@@ -1574,11 +1573,11 @@ body.panels-right #memory-graph-panel.open,
 body.panels-right #nurturing-panel.open {
   transform: scale(1) translateX(0);
 }
+/* panels-right 模式下 md-panel 对齐右侧面板左边缘，与默认模式的覆盖关系一致 */
 body.panels-right .md-panel {
   right: auto;
-  left: 570px;
+  left: 260px;
 }
-
 /* ===== 动画 ===== */
 @keyframes petAppear {
   from { opacity: 0; transform: scale(0.5) translateY(20px); }
@@ -1620,7 +1619,7 @@ body.panels-right .md-panel {
   transform: translateY(6px);
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
-  z-index: 24;
+  z-index: 34;
 }
 .learning-status-bar.visible {
   opacity: 1;
@@ -1689,7 +1688,7 @@ body.panels-right .md-panel {
   transform: translateY(8px) scale(0.95);
   transition: opacity 0.28s cubic-bezier(0.34, 1.2, 0.64, 1),
               transform 0.28s cubic-bezier(0.34, 1.2, 0.64, 1);
-  z-index: 25;
+  z-index: 35;
   pointer-events: auto;
 }
 .learning-choice-ui.visible {
@@ -1869,6 +1868,7 @@ body.panels-right .md-panel {
   overflow: hidden;
   pointer-events: none;
   z-index: 25;
+  transition: opacity 0.25s ease;
 }
 
 .stream-segment {
