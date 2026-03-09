@@ -1573,6 +1573,11 @@ body.panels-right #memory-graph-panel.open,
 body.panels-right #nurturing-panel.open {
   transform: scale(1) translateX(0);
 }
+/* panels-right 模式下 md-panel 对齐右侧面板左边缘，与默认模式的覆盖关系一致 */
+body.panels-right .md-panel {
+  right: auto;
+  left: 260px;
+}
 /* ===== 动画 ===== */
 @keyframes petAppear {
   from { opacity: 0; transform: scale(0.5) translateY(20px); }
