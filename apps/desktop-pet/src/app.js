@@ -723,7 +723,14 @@ class OpenClawPet {
 
   /** 菜单关闭后恢复穿透状态（交给下一次 mousemove 精确判断） */
   _updateMousePassthrough() {
-    this.electronAPI?.setIgnoreMouse(true);
+    this._setIgnoreMouse(true);
+  }
+
+  /** 只在状态变化时才发 IPC，避免 mousemove 期间大量无效调用 */
+  _setIgnoreMouse(val) {
+    if (this._mouseIgnored === val) return;
+    this._mouseIgnored = val;
+    this.electronAPI?.setIgnoreMouse(val);
   }
 
   _setupMousePassthrough() {
@@ -744,7 +751,7 @@ class OpenClawPet {
       const contextMenuEl = e.target.closest?.('.custom-context-menu');
       // 右键菜单展开中 → 全局禁止穿透，确保点击任何区域都能关闭菜单
       if (document.querySelector('.custom-context-menu')) {
-        this.electronAPI.setIgnoreMouse(false);
+        this._setIgnoreMouse(false);
         return;
       }
       const mgPanel = document.getElementById('memory-graph-panel');
@@ -762,7 +769,7 @@ class OpenClawPet {
         (nurPanel?.classList.contains('open') && nurPanel.contains(e.target));
 
       if (isOverPanel) {
-        this.electronAPI.setIgnoreMouse(false);
+        this._setIgnoreMouse(false);
         return;
       }
 
@@ -776,13 +783,13 @@ class OpenClawPet {
         if (x >= 0 && y >= 0 && x < this.canvas.width && y < this.canvas.height) {
           const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
           const pixel = ctx.getImageData(x, y, 1, 1).data;
-          this.electronAPI.setIgnoreMouse(pixel[3] < 10);
+          this._setIgnoreMouse(pixel[3] < 10);
         }
         return;
       }
 
       // 3. 其他区域（透明背景）→ 穿透
-      this.electronAPI.setIgnoreMouse(true);
+      this._setIgnoreMouse(true);
     };
     document.addEventListener('mousemove', this._mouseMoveHandler);
   }
