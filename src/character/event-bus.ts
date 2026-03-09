@@ -46,6 +46,16 @@ export type CharacterEventMap = {
   'soul:action': { type: string; text?: string; careAction?: string; emotion?: string; memory?: { fact: string; category: string } };
   /** World Agent generated an event */
   'world:event': { id: string; type: string; title: string; desc: string };
+  /** Todo created */
+  'todo:created': { todo: { id: string; title: string; category: string } };
+  /** Todo completed by user */
+  'todo:completed': { todo: { id: string; title: string; category: string } };
+  /** Todo verified by AI */
+  'todo:verified': { todo: { id: string; title: string; category: string }; rewards: { exp?: number; coins?: number } };
+  /** Todo deleted */
+  'todo:deleted': { todo: { id: string; title: string } };
+  /** Todos regenerated */
+  'todo:regenerated': { cleared: number };
 };
 
 type EventHandler<T> = (data: T) => void;
