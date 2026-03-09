@@ -1,31 +1,20 @@
 /**
  * MemoryGraph.js
- * 记忆簇系统 — 按主题聚合对话片段，为 OpenClaw 提供语义索引层
+ * 记忆簇系统 — 按主题聚合对话片段，同步到服务端 memory_search 索引
  *
  * 数据存储在 localStorage('pet-memory-clusters')
  * 每个簇 = 一个主题（theme + keywords + summary + fragments）
  *
- * OpenClaw 联动：
- *   - writeSkillFile('user-profile', ...) 写用户画像（认知层，与事件流水正交）
- *   - recall(query) 检索相关簇，供对话上下文注入
+ * 检索由服务端 memory_search 统一处理（BM25/hybrid），客户端仅负责提取与同步。
  */
 
 const STORAGE_KEY = 'pet-memory-clusters';
 const MAX_CLUSTERS = 50;
 const MAX_FRAGMENTS_PER_CLUSTER = 20;
 const DEBOUNCE_MS = 3000;
-const SNAPSHOT_EVERY = 5;
 
 function genId(prefix) {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-/** 简单中英文分词：按空格/标点/CJK字符边界切分 */
-function tokenize(text) {
-  if (!text) return [];
-  // 提取连续英文单词和单个CJK字符
-  const tokens = text.toLowerCase().match(/[a-z0-9_\-]+|[\u4e00-\u9fff]/g) || [];
-  return [...new Set(tokens)].filter(t => t.length > 1 || /[\u4e00-\u9fff]/.test(t));
 }
 
 export class MemoryGraph {
@@ -118,11 +107,6 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 
       // 同步簇数据到服务端 memory search 索引
       this._syncToServer();
-
-      // 定期写 OpenClaw 用户画像
-      if (this._data.meta.extractCount % SNAPSHOT_EVERY === 0) {
-        this._writeUserProfile();
-      }
 
       this._onChange?.();
     } catch (e) {
@@ -237,87 +221,6 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
     }
   }
 
-  // ─── 检索：关键词匹配 ───
-
-  /**
-   * 根据查询文本检索相关记忆簇
-   * @param {string} query - 用户消息或搜索词
-   * @param {number} topK - 返回前 K 个
-   * @returns {{ cluster: object, score: number }[]}
-   */
-  recall(query, topK = 3) {
-    const queryTokens = tokenize(query);
-    if (queryTokens.length === 0) return [];
-
-    const clusters = this.getClusters();
-    const scored = [];
-
-    for (const c of clusters) {
-      let score = 0;
-
-      // 1) theme 包含匹配（高权重）
-      const themeLower = c.theme.toLowerCase();
-      for (const t of queryTokens) {
-        if (themeLower.includes(t)) score += 5;
-      }
-
-      // 2) keywords 精确匹配
-      const kwSet = new Set(c.keywords);
-      for (const t of queryTokens) {
-        if (kwSet.has(t)) score += 3;
-      }
-
-      // 3) implicitKeywords 匹配（隐性关联）
-      const ikwSet = new Set(c.implicitKeywords || []);
-      for (const t of queryTokens) {
-        if (ikwSet.has(t)) score += 2;
-      }
-
-      // 4) fragment text 模糊匹配（低权重）
-      for (const frag of c.fragments) {
-        const fragLower = frag.text.toLowerCase();
-        for (const t of queryTokens) {
-          if (fragLower.includes(t)) score += 1;
-        }
-      }
-
-      // 5) summary 匹配
-      if (c.summary) {
-        const summaryLower = c.summary.toLowerCase();
-        for (const t of queryTokens) {
-          if (summaryLower.includes(t)) score += 2;
-        }
-      }
-
-      // 6) 时效衰减：最近更新的簇加分
-      const daysSinceUpdate = (Date.now() - c.updatedAt) / (1000 * 60 * 60 * 24);
-      if (daysSinceUpdate < 1) score += 2;
-      else if (daysSinceUpdate < 7) score += 1;
-
-      if (score > 0) {
-        scored.push({ cluster: c, score });
-      }
-    }
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, topK);
-  }
-
-  /**
-   * 生成对话注入文本：recall 后拼接相关簇摘要
-   * @param {string} userMsg
-   * @returns {string} 注入前缀（空字符串表示无相关记忆）
-   */
-  buildContextPrefix(userMsg) {
-    const results = this.recall(userMsg, 3);
-    if (results.length === 0) return '';
-
-    const lines = results.map(r =>
-      `- ${r.cluster.theme}: ${r.cluster.summary}`
-    );
-    return `[记忆参考]\n${lines.join('\n')}\n---\n`;
-  }
-
   // ─── 服务端同步：写入 memory search 索引 ───
 
   _syncToServer() {
@@ -342,49 +245,6 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
     } catch { /* fire-and-forget */ }
   }
 
-  // ─── OpenClaw 联动：用户画像 ───
-
-  _writeUserProfile() {
-    try {
-      const clusters = this.getClusters();
-      if (clusters.length === 0) return;
-
-      // 按 weight 降序
-      const sorted = [...clusters].sort((a, b) => b.weight - a.weight);
-
-      let md = `---
-name: user-profile
-description: "宠物通过日常对话积累的用户画像。了解用户兴趣、项目、偏好、人际关系时查阅此文件。"
----
-
-# 用户画像
-
-> 自动维护。共 ${clusters.length} 个记忆主题，${this.getFragmentCount()} 条对话片段。
-> 最后更新: ${new Date().toLocaleString('zh-CN')}
-
-`;
-
-      for (const c of sorted) {
-        md += `## ${c.theme}\n`;
-        md += `> ${c.summary}\n`;
-        md += `- 关键词: ${c.keywords.join(', ')}\n`;
-        if (c.relatedClusters.length > 0) {
-          const relNames = c.relatedClusters
-            .map(id => this._data.clusters[id]?.theme)
-            .filter(Boolean);
-          if (relNames.length > 0) {
-            md += `- 关联: ${relNames.join(', ')}\n`;
-          }
-        }
-        md += `- 对话片段: ${c.fragments.length} 条 (最近: ${new Date(c.updatedAt).toLocaleDateString('zh-CN')})\n`;
-        md += '\n';
-      }
-
-      this.electronAPI.writeSkillFile?.('user-profile', md);
-      this._data.meta.lastSnapshotAt = Date.now();
-    } catch { /* fire-and-forget */ }
-  }
-
   // ─── 持久化 ───
 
   _load() {
@@ -395,7 +255,7 @@ description: "宠物通过日常对话积累的用户画像。了解用户兴趣
         if (data.clusters && data.meta) return data;
       }
     } catch { /* ignore */ }
-    return { clusters: {}, meta: { extractCount: 0, lastExtractAt: 0, lastSnapshotAt: 0, version: 2 } };
+    return { clusters: {}, meta: { extractCount: 0, lastExtractAt: 0, version: 2 } };
   }
 
   _save() {

@@ -30,14 +30,10 @@ export class ChatPanel {
     this._rawTextMap = {};
 
     this._lastUserMessage = '';
-    this._memoryGraph = null;
 
     this._createDOM();
     this._setupStreamListener();
   }
-
-  /** 注入 MemoryGraph 引用，用于对话上下文注入 */
-  setMemoryGraph(mg) { this._memoryGraph = mg; }
 
   /** 返回最后一条用户消息文本 */
   getLastUserMessage() { return this._lastUserMessage; }
@@ -153,27 +149,20 @@ export class ChatPanel {
     this.activeTypingId = this._addMessage('assistant', '...', false);
     this.streamedText = '';
 
-    // 记忆图谱上下文注入：将相关记忆拼入发送文本
-    let sendText = text;
-    if (this._memoryGraph) {
-      const prefix = this._memoryGraph.buildContextPrefix(text);
-      if (prefix) sendText = prefix + text;
-    }
-
     // 尝试使用流式聊天，fallback 到旧接口
     if (this.electronAPI.chatSend) {
       try {
         // runId 在发送前生成并设置，避免流式事件早于 invoke 返回时被丢弃
         const runId = crypto.randomUUID();
         this.activeRunId = runId;
-        await this.electronAPI.chatSend(sendText, undefined, runId);
+        await this.electronAPI.chatSend(text, undefined, runId);
         // 流式事件将通过 _setupStreamListener 处理
       } catch (e) {
         console.warn('Stream send failed, falling back:', e.message);
-        await this._sendLegacy(sendText);
+        await this._sendLegacy(text);
       }
     } else {
-      await this._sendLegacy(sendText);
+      await this._sendLegacy(text);
     }
   }
 

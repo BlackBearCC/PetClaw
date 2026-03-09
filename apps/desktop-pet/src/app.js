@@ -478,7 +478,6 @@ class OpenClawPet {
     if (this.electronAPI) {
       this.memoryGraph = new MemoryGraph(this.electronAPI);
       this.memoryGraphPanel = new MemoryGraphPanel(this.memoryGraph);
-      this.chatPanel.setMemoryGraph(this.memoryGraph);
     }
 
     // 6i-2. 面板状态变更 → 动态缩放窗口
