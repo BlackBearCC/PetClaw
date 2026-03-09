@@ -38,7 +38,6 @@ import { CourseGenerator } from './pet/CourseGenerator.js';
 import { LearningStatusBar } from './ui/LearningStatusBar.js';
 import { LearningEventScheduler } from './pet/LearningEventScheduler.js';
 import { LearningChoiceUI } from './ui/LearningChoiceUI.js';
-import { MemoryGraph } from './pet/MemoryGraph.js';
 import { MemoryGraphPanel } from './ui/MemoryGraphPanel.js';
 import { PetStateSync } from './pet/PetStateSync.js';
 import { NurturingPanel } from './ui/NurturingPanel.js';
@@ -473,10 +472,9 @@ class OpenClawPet {
       });
     }
 
-    // 6l. 记忆图谱
+    // 6l. 记忆图谱面板 (数据来自服务端 MemoryGraphSystem)
     if (this.electronAPI) {
-      this.memoryGraph = new MemoryGraph(this.electronAPI);
-      this.memoryGraphPanel = new MemoryGraphPanel(this.memoryGraph);
+      this.memoryGraphPanel = new MemoryGraphPanel(this.electronAPI);
     }
 
     // 6i-2. 面板状态变更 → 动态缩放窗口
@@ -732,6 +730,7 @@ class OpenClawPet {
       const mdPanelEl = e.target.closest?.('.md-panel');
       const choiceUIEl = e.target.closest?.('.learning-choice-ui');
       const contextMenuEl = e.target.closest?.('.custom-context-menu');
+      const streamSegEl = e.target.closest?.('.stream-segment');
       // 右键菜单展开中 → 全局禁止穿透，确保点击任何区域都能关闭菜单
       if (document.querySelector('.custom-context-menu')) {
         this.electronAPI.setIgnoreMouse(false);
@@ -745,6 +744,7 @@ class OpenClawPet {
         !!mdPanelEl ||
         !!choiceUIEl ||
         !!contextMenuEl ||
+        !!streamSegEl ||
         (chatPanel?.classList.contains('open') && chatPanel.contains(e.target)) ||
         (settingsPanel?.classList.contains('open') && settingsPanel.contains(e.target)) ||
         (skillPanel?.classList.contains('open') && skillPanel.contains(e.target)) ||
@@ -829,10 +829,10 @@ class OpenClawPet {
         localStorage.setItem('pet-chat-count', String(this._chatCompletionCount));
         this.achievementSystem?.check();
 
-        // 记忆图谱提取
-        if (this.memoryGraph) {
-          const userMsg = this.chatPanel?.getLastUserMessage?.() || '';
-          this.memoryGraph.enqueueExtraction(userMsg, msg);
+        // 记忆提取 — 通知服务端 MemoryGraphSystem
+        const userMsg = this.chatPanel?.getLastUserMessage?.() || '';
+        if (userMsg || msg) {
+          this.electronAPI.petRPC?.('pet.memory.extract', { userMsg, aiReply: msg });
         }
       }
     });

@@ -40,7 +40,8 @@
  *   pet.shop.list           — get shop items with purchase limits
  *   pet.shop.buy            — buy an item (deduct coins, check limits)
  *   pet.wallet.info         — get star-coin balance & stats
- *   pet.memory.sync         — sync MemoryGraph clusters into memory search index
+ *   pet.memory.extract      — enqueue memory extraction from chat (userMsg + aiReply)
+ *   pet.memory.clusters     — get memory cluster data (for UI panel)
  */
 
 import {
@@ -111,6 +112,56 @@ function getFsAccessSettings() {
   };
 }
 
+// ─── LLM completion for pet subsystems (memory extraction, chat eval) ───
+
+function resolvePetLLMConfig(): { baseUrl: string; apiKey: string; model: string } | null {
+  const cfg = loadConfig();
+  const primaryModel = (cfg as Record<string, unknown> as { agents?: { defaults?: { model?: { primary?: string } } } }).agents?.defaults?.model?.primary;
+  const providers = cfg.models?.providers;
+  if (!primaryModel || !providers) return null;
+
+  const slashIdx = primaryModel.indexOf("/");
+  if (slashIdx <= 0) return null;
+
+  const providerKey = primaryModel.substring(0, slashIdx);
+  const modelName = primaryModel.substring(slashIdx + 1);
+  const provider = providers[providerKey];
+  if (!provider?.baseUrl || !provider?.apiKey) return null;
+
+  return {
+    baseUrl: provider.baseUrl,
+    apiKey: String(provider.apiKey),
+    model: modelName,
+  };
+}
+
+async function petLLMComplete(prompt: string): Promise<string | null> {
+  const llmCfg = resolvePetLLMConfig();
+  if (!llmCfg) return null;
+  try {
+    const res = await fetch(`${llmCfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${llmCfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: llmCfg.model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1024,
+        temperature: 0.85,
+        stream: false,
+        enable_thinking: false,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Singleton engine instance ───
 
 let engine: PetEngine | null = null;
@@ -126,6 +177,30 @@ function getEngine(): PetEngine {
     tickInterval = setInterval(() => {
       engine?.tick(1000);
     }, 1000);
+
+    // Wire up memory graph callbacks
+    engine.memoryGraph.setLLMComplete(petLLMComplete);
+    engine.memoryGraph.setIndexCallback((clusters) => {
+      const cfg = loadConfig();
+      const agentId = resolveDefaultAgentId(cfg);
+      getMemorySearchManager({ cfg, agentId })
+        .then(({ manager }) => {
+          if (manager?.indexClusters) {
+            const payload: MemoryClusterInput[] = clusters.map((c) => ({
+              id: c.id,
+              theme: c.theme,
+              keywords: c.keywords,
+              implicitKeywords: c.implicitKeywords,
+              summary: c.summary,
+              fragments: c.fragments.map((f) => ({ text: f.text })),
+              weight: c.weight,
+              updatedAt: c.updatedAt,
+            }));
+            manager.indexClusters(payload);
+          }
+        })
+        .catch(() => { /* best-effort indexing */ });
+    });
 
     // Register the agent:bootstrap hook once to inject PET_STATE.md
     if (!bootstrapHookRegistered) {
@@ -571,31 +646,24 @@ export const petHandlers: GatewayRequestHandlers = {
 
   // ── Memory ──
 
-  "pet.memory.sync": async ({ params, respond }) => {
+  "pet.memory.extract": ({ params, respond }) => {
     try {
-      const clusters = params?.clusters as MemoryClusterInput[] | undefined;
-      if (!Array.isArray(clusters) || clusters.length === 0) {
-        (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing or empty 'clusters' param"));
+      const userMsg = (params?.userMsg as string) ?? "";
+      const aiReply = (params?.aiReply as string) ?? "";
+      if (!userMsg && !aiReply) {
+        (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'userMsg' or 'aiReply' param"));
         return;
       }
-
-      const cfg = loadConfig();
-      const agentId = resolveDefaultAgentId(cfg);
-      const { manager, error } = await getMemorySearchManager({ cfg, agentId });
-      if (!manager) {
-        (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, error ?? "memory search unavailable"));
-        return;
-      }
-
-      if (!manager.indexClusters) {
-        (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "indexClusters not supported by current memory backend"));
-        return;
-      }
-
-      manager.indexClusters(clusters);
-      (respond as Function)(true, { ok: true, indexed: clusters.length });
+      const e = getEngine();
+      e.memoryGraph.enqueueExtraction(userMsg, aiReply);
+      (respond as Function)(true, { ok: true, queued: true });
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
+
+  "pet.memory.clusters": safeHandler((e) => ({
+    clusters: e.memoryGraph.getClusters(),
+    ...e.memoryGraph.getStatus(),
+  })),
 };

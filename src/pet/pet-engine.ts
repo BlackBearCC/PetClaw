@@ -25,6 +25,7 @@ import { ChatEvalSystem } from "./chat-eval-system.js";
 import { LoginTracker } from "./login-tracker.js";
 import { DailyTaskSystem } from "./daily-task-system.js";
 import { ShopSystem } from "./shop-system.js";
+import { MemoryGraphSystem } from "./memory-graph.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -76,6 +77,7 @@ export class PetEngine {
   readonly login: LoginTracker;
   readonly dailyTasks: DailyTaskSystem;
   readonly shop: ShopSystem;
+  readonly memoryGraph: MemoryGraphSystem;
 
   private _passiveAcc: number = 0;
 
@@ -151,6 +153,9 @@ export class PetEngine {
 
     // Wire shop into daily tasks (for coin rewards)
     this.dailyTasks.setShopSystem(this.shop);
+
+    // Memory graph (cluster extraction + indexing)
+    this.memoryGraph = new MemoryGraphSystem(options.store);
 
     // ─── Cross-system wiring ───
 

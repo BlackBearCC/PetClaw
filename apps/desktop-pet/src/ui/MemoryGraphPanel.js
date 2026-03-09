@@ -5,6 +5,8 @@
  * 节点 = 记忆簇（theme 标签，大小按 fragment 数量）
  * 边 = relatedClusters 关联
  * 点击节点 → 展开 fragment 列表
+ *
+ * 数据来源: petRPC('pet.memory.clusters') — 服务端 MemoryGraphSystem
  */
 
 const CLUSTER_COLORS = [
@@ -13,24 +15,23 @@ const CLUSTER_COLORS = [
 ];
 
 export class MemoryGraphPanel {
-  constructor(memoryGraph) {
-    this.mg = memoryGraph;
+  constructor(electronAPI) {
+    this.electronAPI = electronAPI;
     this.isOpen = false;
     this._rafId = null;
     this._layoutNodes = [];
     this._layoutEdges = [];
     this._dragNode = null;
     this._hoverNode = null;
-    this._selectedNode = null; // 点击展开 fragment 的节点
+    this._selectedNode = null;
     this._converged = false;
     this._iterCount = 0;
     this._cw = 270;
     this._ch = 340;
+    this._clusters = [];
+    this._clusterMap = {};
 
     this._createDOM();
-    this.mg.onChange(() => {
-      if (this.isOpen) this._rebuildLayout();
-    });
   }
 
   // ─── DOM ───
@@ -78,12 +79,13 @@ export class MemoryGraphPanel {
 
   // ─── Panel toggle ───
 
-  open() {
+  async open() {
     this.isOpen = true;
     this.element.classList.add('open');
     this.onStateChange?.();
     this._closeDetail();
     this._resizeCanvas();
+    await this._loadFromServer();
     this._rebuildLayout();
     this._startRender();
   }
@@ -108,6 +110,23 @@ export class MemoryGraphPanel {
     else this.open();
   }
 
+  // ─── Server data ───
+
+  async _loadFromServer() {
+    try {
+      const result = await this.electronAPI.petRPC('pet.memory.clusters');
+      if (result?.clusters) {
+        this._clusters = result.clusters;
+        this._clusterMap = {};
+        for (const c of this._clusters) {
+          this._clusterMap[c.id] = c;
+        }
+      }
+    } catch {
+      // Silent fail — show empty state
+    }
+  }
+
   // ─── Canvas sizing ───
 
   _resizeCanvas() {
@@ -128,8 +147,8 @@ export class MemoryGraphPanel {
   // ─── Layout ───
 
   _rebuildLayout() {
-    const clusters = this.mg.getClusters();
-    const fragCount = this.mg.getFragmentCount();
+    const clusters = this._clusters;
+    const fragCount = clusters.reduce((sum, c) => sum + c.fragments.length, 0);
 
     const hasData = clusters.length > 0;
     this.emptyEl.style.display = hasData ? 'none' : 'flex';
@@ -145,13 +164,11 @@ export class MemoryGraphPanel {
     const cx = w / 2;
     const cy = h / 2;
 
-    // 保留已有位置
     const oldPosMap = {};
     for (const ln of this._layoutNodes) {
       oldPosMap[ln.id] = { x: ln.x, y: ln.y };
     }
 
-    // 数据节点 — 圆形初始布局
     const angleStep = (2 * Math.PI) / Math.max(clusters.length, 1);
     this._layoutNodes = clusters.map((c, i) => {
       const old = oldPosMap[c.id];
@@ -173,7 +190,6 @@ export class MemoryGraphPanel {
       };
     });
 
-    // 构建边 (relatedClusters)
     const nodeIndex = {};
     this._layoutNodes.forEach((n, i) => { nodeIndex[n.id] = i; });
 
@@ -235,7 +251,6 @@ export class MemoryGraphPanel {
       b.vx -= fx; b.vy -= fy;
     }
 
-    // 向心力：防止节点飘太远
     const cx = this._cw / 2;
     const cy = this._ch / 2;
     for (const n of nodes) {
@@ -286,13 +301,11 @@ export class MemoryGraphPanel {
     const nodes = this._layoutNodes;
     const edges = this._layoutEdges;
 
-    // 边
     for (const e of edges) {
       const a = nodes[e.source], b = nodes[e.target];
       this._drawEdge(ctx, a, b);
     }
 
-    // 节点
     for (const n of nodes) {
       this._drawNode(ctx, n, n === this._hoverNode, n === this._selectedNode);
     }
@@ -316,22 +329,19 @@ export class MemoryGraphPanel {
   _drawNode(ctx, node, isHover, isSelected) {
     const { x, y, radius, color, theme, fragCount } = node;
 
-    // 手绘风阴影
     ctx.beginPath();
     ctx.arc(x + 2, y + 2, radius, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(60,50,40,0.12)';
     ctx.fill();
 
-    // 圆形填充
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fillStyle = isHover || isSelected ? this._lighten(color, 0.25) : color;
     ctx.fill();
-    ctx.strokeStyle = isSelected ? '#3C3228' : '#3C3228';
+    ctx.strokeStyle = '#3C3228';
     ctx.lineWidth = isSelected ? 3.5 : isHover ? 3 : 2;
     ctx.stroke();
 
-    // fragment 计数徽章
     if (fragCount > 1) {
       const bx = x + radius * 0.65;
       const by = y - radius * 0.65;
@@ -346,13 +356,11 @@ export class MemoryGraphPanel {
       ctx.fillText(fragCount > 9 ? '9+' : String(fragCount), bx, by);
     }
 
-    // 主题标签
     ctx.font = `${isHover || isSelected ? 'bold ' : ''}11px "Microsoft YaHei", sans-serif`;
     ctx.fillStyle = '#3C3228';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
-    // 文字截断
     const maxLabelWidth = 60;
     let label = theme;
     if (ctx.measureText(label).width > maxLabelWidth) {
@@ -371,11 +379,11 @@ export class MemoryGraphPanel {
     return `rgb(${Math.min(255, Math.round(r + (255 - r) * amount))},${Math.min(255, Math.round(g + (255 - g) * amount))},${Math.min(255, Math.round(b + (255 - b) * amount))})`;
   }
 
-  // ─── Detail panel (fragment 展开) ───
+  // ─── Detail panel ───
 
   _showDetail(node) {
     this._selectedNode = node;
-    const cluster = this.mg.getData().clusters[node.id];
+    const cluster = this._clusterMap[node.id];
     if (!cluster) return;
 
     this.bodyEl.style.display = 'none';
@@ -389,7 +397,6 @@ export class MemoryGraphPanel {
     const fragContainer = this.detailEl.querySelector('.mg-detail-fragments');
     fragContainer.innerHTML = '';
 
-    // 按时间倒序
     const frags = [...cluster.fragments].sort((a, b) => b.timestamp - a.timestamp);
     for (const f of frags) {
       const el = document.createElement('div');
@@ -490,7 +497,6 @@ export class MemoryGraphPanel {
       const { x, y } = this._canvasXY(e);
       const dx = x - this._dragStartPos.x;
       const dy = y - this._dragStartPos.y;
-      // 判定为点击（而非拖拽）：移动距离 < 5px
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
         this._showDetail(this._dragNode);
       }

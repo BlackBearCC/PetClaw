@@ -68,7 +68,6 @@ src/app.js (OpenClawPet)
 ├── pet/MiniCatSystem.js          Sub-agent mini-cat companions (≤4)
 ├── pet/AgentStatsTracker.js      Sub-session tool stats
 ├── pet/WorkspaceWatcher.js       Foreground window title parsing
-├── pet/MemoryGraph.js            Memory graph extraction
 ├── ui/ChatPanel.js               Full chat UI with streaming support
 ├── ui/StreamingBubble.js         Stacked speech bubbles (up to 8)
 ├── ui/BottomChatInput.js         Quick-input bar below the pet
@@ -78,7 +77,7 @@ src/app.js (OpenClawPet)
 ├── ui/LearningStatusBar.js       Bottom learning progress bar
 ├── ui/LearningChoiceUI.js        Interactive Q&A choice buttons during learning
 ├── ui/SettingsPanel.js           Config UI (model, personality, etc.)
-├── ui/MemoryGraphPanel.js        Memory graph visualization panel
+├── ui/MemoryGraphPanel.js        Memory graph visualization (reads from server RPC)
 ├── ui/AgentConnections.js        SVG connection lines visualization
 ├── interaction/DragHandler.js    Window drag via moveWindow IPC
 ├── interaction/ClickHandler.js   Single / double / long-press detection

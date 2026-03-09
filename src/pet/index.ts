@@ -54,6 +54,14 @@ export {
   type TaskLLMCallback,
 } from "./daily-task-system.js";
 
+// Memory graph
+export {
+  MemoryGraphSystem,
+  type LLMCompleteCallback,
+  type MemoryCluster,
+  type MemoryFragment,
+} from "./memory-graph.js";
+
 // Domain definitions
 export {
   DOMAINS,

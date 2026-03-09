@@ -304,44 +304,39 @@ OpenClaw 支持 agent 工具调用，可以在桌宠端反映为动画：
 
 ---
 
-## 记忆系统 (Done)
+## 记忆系统 — 全服务端架构 (Done)
 
 AI 通过记忆图谱记住用户的偏好、项目、习惯等长期信息，强化"养成"的连续性。
 
 ### 架构
 
 ```
-对话完成
-  → MemoryGraph.extractAndMerge() — LLM 判断是否值得记忆，提取/合并簇
-  → _syncToServer() — petRPC('pet.memory.sync', {clusters})
-    → Gateway → getMemorySearchManager()
-      → manager.indexClusters(clusters)
-        → SQLite chunks + chunks_fts 表 (source='clusters')
-          → memory_search 统一 BM25/hybrid 检索
+对话完成 (客户端)
+  → petRPC('pet.memory.extract', {userMsg, aiReply})  ← 仅传递原始数据
+  → Gateway: MemoryGraphSystem.enqueueExtraction()     ← 去抖 3s
+    → petLLMComplete(prompt)                           ← 服务端直接调 LLM API
+      → 判断是否值得记忆 → 提取/合并簇 → 剪枝
+    → indexClusters(clusters)                          ← 全量替换写入 SQLite
+      → chunks + chunks_fts 表 (source='clusters')
+        → memory_search 统一 BM25/hybrid 检索
 ```
 
 ### 关键设计
 
-- **客户端仅提取与同步**: `MemoryGraph.js` 负责 LLM 驱动的簇提取/合并/剪枝，不做本地检索
-- **服务端统一检索**: 簇数据通过 `indexClusters()` 写入 SQLite FTS，与 memory/sessions 走同一套 BM25/hybrid 检索
+- **客户端零逻辑**: 对话完成后仅调 `pet.memory.extract` 传递 `{userMsg, aiReply}`，不做任何处理
+- **服务端完整生命周期**: `MemoryGraphSystem`（`src/pet/memory-graph.ts`）负责 LLM 提取 + 合并 + 剪枝 + 持久化 + FTS 索引
+- **LLM 调用**: `petLLMComplete()` 读取 OpenClaw config 的 model provider，直接 fetch OpenAI-compatible API
+- **簇持久化**: `~/.openclaw/store/pet/memory-graph.json`（PersistenceStore，与其他 pet state 一致）
 - **隐性关键词**: LLM 提取时生成 `implicitKeywords`（同义词、上位概念、口语说法），写入 FTS 索引提升召回率
-- **全量替换**: 每次同步 `DELETE FROM chunks WHERE source='clusters'` 后重新写入全部簇
-- **无 PET_MEMORY.md**: 不再通过 context file 注入记忆，由 memory_search 工具按需检索
+- **全量替换**: 每次 `DELETE FROM chunks WHERE source='clusters'` 后重新写入全部簇
+- **面板**: `MemoryGraphPanel` 通过 `petRPC('pet.memory.clusters')` 从服务端读取数据渲染
 
-### 簇数据格式
+### RPC 方法
 
-```typescript
-type MemoryClusterInput = {
-  id: string;           // 簇 ID (e.g., "mc-lxyz1234")
-  theme: string;        // 主题 (e.g., "编程项目")
-  keywords: string[];   // 显式关键词
-  implicitKeywords?: string[];  // 隐性关键词
-  summary: string;      // 簇摘要
-  fragments: Array<{ text: string }>;  // 对话片段
-  weight: number;       // 权重 (提及次数)
-  updatedAt: number;    // 最后更新时间戳
-};
-```
+| 方法 | 说明 |
+|------|------|
+| `pet.memory.extract` | 客户端传 `{userMsg, aiReply}`，服务端异步提取 |
+| `pet.memory.clusters` | 返回簇数据 + 统计信息（面板用） |
 
 ---
 
@@ -354,19 +349,20 @@ type MemoryClusterInput = {
 3. 接通 `pet.chat.canChat` — 客户端发消息前检查
 4. 接通 `pet.chat.onMessage` — 每条消息通知引擎
 
-### P0.5 — 记忆图谱 → memory_search ✅
+### P0.5 — 记忆图谱 ✅
 
-5. `MemoryGraph.js` LLM 提取 + 隐性关键词
-6. `pet.memory.sync` RPC → `indexClusters()` 写入 SQLite FTS
-7. 移除客户端本地召回，检索交由服务端 memory_search
+5. `MemoryGraphSystem` 服务端 LLM 提取 + 簇管理 + FTS 索引
+6. `pet.memory.extract` RPC — 客户端仅传数据，服务端处理全部逻辑
+7. `pet.memory.clusters` RPC — 面板数据读取
+8. 删除客户端 `MemoryGraph.js`，`MemoryGraphPanel` 改读服务端
 
 ### P1 — 评估 + 主动对话
 
-8. 接通 `ChatEvalSystem` — 注册 LLM 意图评估回调
-9. 气泡型主动对话 — 客户端本地固定文案
-10. 工具调用动画映射 — tool_event → 动画
+9. 接通 `ChatEvalSystem` — 注册 LLM 意图评估回调
+10. 气泡型主动对话 — 客户端本地固定文案
+11. 工具调用动画映射 — tool_event → 动画
 
 ### P2 — 深度集成
 
-11. AI 型主动对话 — LLM 生成的主动闲聊
-12. 桌面感知 → AI 上下文 — 前台应用/用户活跃度
+12. AI 型主动对话 — LLM 生成的主动闲聊
+13. 桌面感知 → AI 上下文 — 前台应用/用户活跃度

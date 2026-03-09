@@ -150,13 +150,15 @@ Gateway (21 pet.* RPC handlers) → PetEngine (in-memory, file-persisted)
 - **`getPetChatGate()`** — 导出函数，供 `chat.send` 调用；engine 未初始化时返回 null（安全降级）
 - **Pet Chat Gate 在 `chat.ts`** — dedupe 检查之后、try 块之前：调用 `canChat()`（饥饿门控）+ `onMessage()`（消息计数）
 
-### 记忆图谱 → memory_search 索引 (Done)
+### 记忆图谱 — 全服务端架构 (Done)
 
-客户端 `MemoryGraph.js` 负责从对话中提取记忆簇（LLM 驱动），每次提取后通过 `petRPC('pet.memory.sync')` 全量同步到服务端。服务端 `indexClusters()` 将簇数据写入 SQLite `chunks` + `chunks_fts` 表，检索由 OpenClaw 内置 memory_search 统一处理（BM25/hybrid）。
+服务端 `MemoryGraphSystem`（`src/pet/memory-graph.ts`）负责记忆的完整生命周期：LLM 提取 → 簇合并/剪枝 → SQLite FTS 索引。客户端零逻辑，仅在对话完成后调用 `petRPC('pet.memory.extract', {userMsg, aiReply})` 传递原始数据。
 
-- **客户端仅负责提取与同步**，不做本地检索（已删除 `recall`/`buildContextPrefix`/`tokenize`）
-- **数据流**: `MemoryGraph._syncToServer()` → `pet.memory.sync` RPC → `manager.indexClusters()` → SQLite FTS
-- **隐性关键词**: LLM 提取时生成 `implicitKeywords`（同义词/上位概念），一并写入 FTS 索引提升召回率
+- **数据流**: 对话完成 → `pet.memory.extract` RPC → `MemoryGraphSystem.enqueueExtraction()` → LLM 提取 → `indexClusters()` → SQLite FTS
+- **LLM 调用**: 服务端 `petLLMComplete()` 直接调用 OpenAI-compatible API（读取 OpenClaw config 的 model provider）
+- **簇持久化**: `~/.openclaw/store/pet/memory-graph.json`（PersistenceStore，与其他 pet state 一致）
+- **隐性关键词**: LLM 提取时生成 `implicitKeywords`（同义词/上位概念），写入 FTS 索引提升召回率
+- **面板**: `MemoryGraphPanel` 通过 `petRPC('pet.memory.clusters')` 读取服务端数据
 
 ### P1 待实现
 - ChatEvalSystem LLM 意图评估回调
