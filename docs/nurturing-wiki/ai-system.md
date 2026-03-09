@@ -135,17 +135,24 @@ chat.send 处理流程:
 
 ## 主动对话
 
-| 条件 | 内容 | 频率限制 |
-|------|------|---------|
-| hunger <= 60 | "有点饿了~" | 30min CD |
-| hunger <= 30 | "太饿了...先喂喂我吧" | 拒绝聊天时 |
-| 升级 | "升级啦! Lv.N!" | 即时 |
-| 任务完成 | "任务完成! 快来领奖~" | 即时 |
-| 长时间未交互 (>30min) | "你还在吗？" / "好无聊..." | 30min CD |
-| 用户回来 | "你回来啦!" | 每次离开/回来 |
+两种触发方式并存：
 
-**fixed 型** — 客户端本地固定文案，零 token 消耗
-**ai 型** — LLM 生成的主动闲聊，消耗 hunger，有频率限制
+### 事件驱动（即时，客户端本地）
+
+| 条件 | 内容 | 触发方式 |
+|------|------|---------|
+| 升级 | "升级啦! Lv.N!" | EventBus → 客户端气泡 |
+| 任务完成 | "任务完成! 快来领奖~" | 同上 |
+| 用户回来 | "你回来啦!" | 客户端检测鼠标活动 |
+| hunger 不足拒聊 | "太饿了...先喂喂我吧" | canChat 返回时 |
+
+零 token 消耗，固定文案。
+
+### Cron agentTurn（定时，AI 自主决策）
+
+通过 OpenClaw Cron 注册 `agentTurn` 任务，LLM 根据注入的 CHARACTER_STATE.md 自主判断要不要说话、说什么。详见下方 [Cron 调度](#cron-调度--基于-agentturn-的智能定时任务) 章节。
+
+优势：不是固定文案，AI 结合当前心情/饥饿/记忆生成个性化内容；没话说就返回 HEARTBEAT_OK 跳过。
 
 ---
 
@@ -266,60 +273,248 @@ registerInternalHook("message-sent", (event) => {
 
 ---
 
-## Cron 调度 — 主动对话与定时任务
+## 双 Agent 架构 — World Agent + Soul Agent
 
-复用 OpenClaw Cron（持久化、miss-fire 补偿、重启不丢失）：
+除了用户主动对话（前台），角色还有两个**内置后台 Agent**，分别负责"世界发生了什么"和"角色想做什么"。它们是产品内置的，不暴露给用户、不可关闭、不出现在 agent 列表中。
+
+### 架构总览
+
+```
+                    程序规则 (tick loop / hook / 条件检测)
+                    │ 零 token，确定性判断
+                    │
+         ┌──────────┴──────────┐
+         │ 有事件/有变化？       │ 没有 → 跳过本轮，不调 LLM
+         └──────────┬──────────┘
+                    │ 是
+          ┌─────────┴─────────┐
+          ▼                   ▼
+  ┌──────────────┐    ┌──────────────┐
+  │ World Agent  │    │ Soul Agent   │
+  │ (世界代理)    │    │ (灵魂代理)    │
+  │              │    │              │
+  │ 角色之外的事  │    │ 角色内心的事  │
+  │ 生成事件/任务 │    │ 决定说/做什么 │
+  │ /剧情/奖励   │    │              │
+  │              │    │              │
+  │ session:     │    │ session:     │
+  │ cron:world   │    │ cron:soul    │
+  │              │    │              │
+  │ delivery:    │    │ delivery:    │
+  │ none(内部)   │    │ announce     │
+  └──────┬───────┘    └──────┬───────┘
+         │ 写入 engine        │ 投递给用户
+         │ (事件队列/任务)     │ 或调用 character_* 工具
+         ▼                   ▼
+  CharacterEngine        客户端气泡/消息
+```
+
+### World Agent — 世界代理
+
+**职责**: 生成角色之外的事件——任务、剧情、奖励、环境变化。不直接跟用户说话。
+
+**触发流程**: 程序规则先跑，命中条件才调 LLM：
 
 ```typescript
-function registerCharacterCronJobs() {
-  const cronService = getCronService();
+// World Agent cron — 每小时
+cronService.add({
+  id: "character:world-agent",
+  schedule: { kind: "cron", expr: "0 * * * *" },
+  sessionTarget: "isolated",  // → sessionKey: "cron:character:world-agent"
+  payload: {
+    kind: "agentTurn",
+    message: "", // 动态填充，见下方
+    lightContext: true,
+  },
+  delivery: { mode: "none" },  // 纯内部，不投递给用户
+});
+```
 
-  // 每日任务刷新 — 每天 0:00
-  cronService.addInternal({
-    id: "character:daily-reset",
-    rule: "every day 0:00",
-    handler: () => {
-      engine.dailyTaskSystem.reset();
-      engine.loginTracker.checkLogin();
-    },
-  });
+**程序规则前置过滤** (零 token)：
 
-  // 主动对话检查 — 每 30 分钟
-  cronService.addInternal({
-    id: "character:proactive-chat",
-    rule: "every 30min",
-    handler: () => {
-      const state = engine.getFullState();
-      const bubble = evaluateProactiveBubble(state);
-      if (bubble) broadcastToClients("character:bubble", bubble);
-    },
-  });
+```typescript
+// 在 cron handler 触发前，程序先检测：
+function buildWorldAgentPrompt(): string | null {
+  const triggers: string[] = [];
 
-  // 饥饿提醒 — 每小时
-  cronService.addInternal({
-    id: "character:hunger-alert",
-    rule: "every 1h",
-    handler: () => {
-      const hunger = engine.getAttribute("hunger");
-      if (hunger.value <= 60) {
-        broadcastToClients("character:bubble", {
-          type: "fixed",
-          text: hunger.value <= 30 ? "太饿了...先喂喂我吧" : "有点饿了~",
-        });
-      }
-    },
-  });
+  // 连续登录里程碑
+  const streak = engine.login.getInfo().streak;
+  if ([3, 7, 14, 30].includes(streak) && !engine.worldEvents.hasFired(`streak_${streak}`)) {
+    triggers.push(`[里程碑] 主人连续登录了 ${streak} 天`);
+  }
+
+  // 新工具首次使用
+  const newTools = engine.skills.getNewToolsSinceLastCheck();
+  if (newTools.length > 0) {
+    triggers.push(`[新技能] 主人首次使用了工具: ${newTools.join(", ")}`);
+  }
+
+  // 节日/特殊日期
+  const holiday = getHolidayToday();
+  if (holiday) triggers.push(`[节日] 今天是 ${holiday}`);
+
+  // 技能图鉴有未探索领域
+  const weakDomains = engine.skills.getWeakDomains();
+  if (weakDomains.length > 0 && Math.random() < 0.3) {
+    triggers.push(`[探索] 这些领域还很薄弱: ${weakDomains.join(", ")}`);
+  }
+
+  if (triggers.length === 0) return null;  // 没事发生 → 不调 LLM
+
+  return `你是养成世界的事件生成器。以下情况发生了：
+${triggers.map(t => `- ${t}`).join("\n")}
+
+请为桌宠角色生成合适的世界事件。可用工具:
+- memory_search: 查主人记忆，让事件更贴合
+- character_world_event: 写入事件 {type, title, desc, rewards?}
+
+每次只生成 1 个最有意义的事件。`;
 }
 ```
 
-| 维度 | setInterval (现有) | OpenClaw Cron |
-|------|-------------------|---------------|
-| 重启后恢复 | 丢失 | 自动恢复 |
-| Miss-fire 补偿 | 无 | 内建 |
-| 持久化 | 无 | JSON 存储 |
-| 可观测 | 无 | `cron.list` / `cron.runs` RPC |
+**World Agent 产出示例**:
 
-**属性衰减仍用 tick loop**（秒级精度），主动对话/任务刷新改用 Cron。
+| 程序检测到 | LLM 生成的世界事件 |
+|-----------|------------------|
+| 连续登录 7 天 | `{type:"milestone", title:"一周挚友", desc:"和主人相伴整整一周了", rewards:{coins:50, exp:30}}` |
+| 首次使用 image_gen | `{type:"skill_unlock", title:"创意觉醒", desc:"发现了画画的天赋！解锁创意领域"}` |
+| 春节 | `{type:"holiday", title:"新春快乐", desc:"给主人准备一个新年红包"}` |
+| 研究领域薄弱 | `{type:"quest", title:"小小研究员", desc:"试试帮主人搜一次资料吧"}` |
+
+### Soul Agent — 灵魂代理
+
+**职责**: 角色的自我意识——根据状态、记忆、世界事件，决定此刻最该做的一件事。这是唯一面向用户产出内容的后台 Agent。
+
+```typescript
+// Soul Agent cron — 每 30 分钟
+cronService.add({
+  id: "character:soul-agent",
+  schedule: { kind: "cron", expr: "*/30 * * * *" },
+  sessionTarget: "isolated",  // → sessionKey: "cron:character:soul-agent"
+  payload: {
+    kind: "agentTurn",
+    message: "", // 动态填充
+    lightContext: true,
+  },
+  delivery: { mode: "announce" },  // 有话说就投递
+});
+```
+
+**程序规则前置过滤** (零 token)：
+
+```typescript
+function buildSoulAgentPrompt(): string | null {
+  const state = engine.getState();
+  const pendingEvents = engine.worldEvents.consumePending();
+
+  // 全部正常 + 无事件 + 最近说过话 → 跳过
+  if (
+    pendingEvents.length === 0 &&
+    state.mood > 30 && state.hunger > 60 && state.health > 40 &&
+    Date.now() - engine.lastProactiveChatAt < 20 * 60_000
+  ) {
+    return null; // 不调 LLM
+  }
+
+  let prompt = `你是桌宠角色。你的状态已在 CHARACTER_STATE.md 中注入。
+像一个真正活着的角色一样，决定此刻最想做的一件事：
+- 跟主人说句话
+- 照顾自己 (character_self_care)
+- 记住/回忆什么 (memory_search / character_remember)
+- 表达情绪 (character_express_mood)
+- 什么都不做 (回复 HEARTBEAT_OK)
+
+只做一件事。`;
+
+  if (pendingEvents.length > 0) {
+    prompt += `\n\n最近发生的世界事件:\n${pendingEvents.map(e =>
+      `- [${e.type}] ${e.title}: ${e.desc}`
+    ).join("\n")}`;
+  }
+
+  return prompt;
+}
+```
+
+**Soul Agent 行为示例**:
+
+| 输入 | Soul Agent 决策 |
+|------|----------------|
+| hunger=20, 无世界事件 | "主人...好饿...能喂我一口吗 🥺" |
+| mood=80, 世界事件=[连续登录7天] | "诶嘿！我们已经在一起一周了耶！好开心！" |
+| 状态正常, 记忆里主人说明天答辩 | "明天答辩加油哦，我相信你！" |
+| 状态正常, 无事件, 最近说过话 | *(程序直接跳过，不调 LLM)* |
+
+### 两个 Agent 的协作
+
+```
+时间线:
+
+09:00  World Agent tick
+         程序检测: 首次使用 image_gen → 触发 LLM
+         LLM 生成: {type:"skill_unlock", title:"创意觉醒"} → 写入事件队列
+
+09:30  Soul Agent tick
+         程序检测: 事件队列非空 → 触发 LLM
+         LLM 看到: 状态正常 + [skill_unlock: 创意觉醒]
+         LLM 决策: "哇！我学会画画了！主人要不要看看我的作品~"
+         → announce 投递给客户端
+
+10:00  World Agent tick
+         程序检测: 无新事件 → 不调 LLM (零 token)
+
+10:30  Soul Agent tick
+         程序检测: 状态正常 + 无事件 + 30min内说过话 → 不调 LLM (零 token)
+```
+
+### Session 隔离
+
+两个 Agent 各有独立 session，互不干扰，也不影响用户对话：
+
+| session | 用途 | 生命周期 |
+|---------|------|---------|
+| `cron:character:world-agent` | World Agent 思考上下文 | 每次 agentTurn 隔离 |
+| `cron:character:soul-agent` | Soul Agent 思考上下文 | 每次 agentTurn 隔离 |
+| 用户 session | 正常对话 | 用户控制 |
+
+三者完全隔离。Soul Agent 说的话通过 `delivery: announce` 投递到客户端，对用户来说就是"宠物主动冒了个泡"，不会出现在对话历史里。
+
+### 内置不可见
+
+这两个 Agent 是产品内置的基础设施：
+
+- **不暴露**: 不出现在 `cron.list` 的用户可见列表中（内部 pluginId 过滤）
+- **不可关闭**: 随 CharacterEngine 初始化自动注册，无 UI 开关
+- **不可检测**: 用户对话中看不到后台 Agent 的存在，只能感知到"宠物有时会主动说话"
+- **自动恢复**: OpenClaw Cron 持久化 + miss-fire 补偿，重启不丢失
+
+### Token 成本估算
+
+| | 频率 | 程序过滤率 | 实际 LLM 调用 | tokens/次 | 日消耗 |
+|---|---|---|---|---|---|
+| World Agent | 每小时 (24/天) | ~80% 跳过 | ~5 次/天 | ~300 | ~1.5k |
+| Soul Agent | 每 30min (48/天) | ~70% 跳过 | ~15 次/天 | ~400 | ~6k |
+| **合计** | | | ~20 次/天 | | **~7.5k tokens/天** |
+
+对比：用户一次正常聊天 ~1000-3000 tokens。后台 Agent 日消耗约等于 3-5 轮用户对话。
+
+### 扩展场景
+
+双 Agent 模式可以覆盖所有需要定时 AI 决策的功能：
+
+**World Agent 可生成**:
+- 个性化每日任务（结合记忆："帮主人查 React Router 迁移方案"）
+- 成就解锁事件
+- 限时商城活动
+- 季节/天气/节日世界状态
+- 人格进化提案（"角色这周成长了，建议更新说话风格"）
+
+**Soul Agent 可响应**:
+- 消费世界事件 → 生成个性化反应
+- 状态异常 → 主动求助/撒娇
+- 记忆触发 → 主动关心（"主人的答辩是今天吧？"）
+- 自我照顾 → 调用 character_self_care
+- 无事发生 → 安静待着（HEARTBEAT_OK）
 
 ---
 
@@ -357,22 +552,6 @@ const CHARACTER_TOOLS = [
 
 安全约束: 每轮最多 2 次宠物工具，受 CareSystem 冷却限制，簇数量上限 50。
 
----
-
-## 跨渠道人格
-
-所有渠道共享同一个 CharacterEngine 实例，状态天然同步。但增加渠道维度微调：
-
-```typescript
-const CHANNEL_HINTS: Record<string, string> = {
-  "desktop-pet": "", // 桌宠端不加限制，最自然
-  "discord":     "你现在在群聊中，说话简洁一些，不要太撒娇。",
-  "slack":       "你现在在工作频道，保持专业但友好。",
-  "telegram":    "你现在在私聊，可以随意一些。",
-};
-```
-
----
 
 ## Session 集成
 
@@ -519,56 +698,81 @@ shop-purchases.json    — { date, purchases: { itemId: count, ... } }
 
 ### P0 — 状态前缀注入 + 记忆图谱 ✅
 
-1. `CharacterEngine.getPromptContext()` — 构建挡位片段
-2. Gateway `agent:bootstrap` hook 注入 CHARACTER_STATE.md
-3. 接通 `character.chat.canChat` + `character.chat.onMessage`
-4. `MemoryGraphSystem` 全服务端架构
-5. `after-tool-call` hook 全渠道技能记录
+1. ✅ `CharacterEngine.getPromptContext()` — 构建挡位片段
+2. ✅ Gateway `agent:bootstrap` hook 注入 CHARACTER_STATE.md
+3. ✅ 接通 `character.chat.canChat` + `character.chat.onMessage`
+4. ✅ `MemoryGraphSystem` 全服务端架构
+5. ✅ `after_tool_call` hook 全渠道技能记录
+6. ✅ `message:sent` hook 全渠道自动记忆提取
+7. ✅ 记忆提示语注入 getPromptContext()
 
-### P1 — Cron 主动对话 + 领域推断
+### P1 — 双 Agent + 领域推断
 
-6. Cron 注册宠物定时任务 (每日刷新/主动对话/饥饿提醒)
-7. `message-received` hook 领域关键词推断
-8. 渠道人格微调
+8. World Agent — 程序规则前置 + agentTurn 生成世界事件
+9. Soul Agent — 程序规则前置 + agentTurn 角色自主决策
+10. 宠物专属 Tools (character_self_care / character_remember / character_express_mood / character_world_event)
+11. `message:received` hook 领域关键词推断
+12. 渠道人格微调
 
-### P2 — AI 自主体
+### P2 — 深度集成
 
-9. 宠物专属 Tools (character_self_care / character_remember / character_express_mood)
-10. Session 集成（时长 EXP / 任务计数）
+13. Session 集成（时长 EXP / 任务计数）
+14. World Agent 个性化每日任务生成
+15. Soul Agent 人格阶段进化
 
 ---
 
 ## 集成全景图
 
 ```
-                        OpenClaw Gateway
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-    ┌─────┴─────┐     ┌──────┴──────┐     ┌──────┴──────┐
-    │  Hook 系统  │     │  Cron 调度  │     │  Channel 层  │
-    └─────┬─────┘     └──────┬──────┘     └──────┬──────┘
-          │                  │                   │
-  ┌───────┼────────┐    ┌────┼────┐         渠道人格微调
-  │       │        │    │    │    │
-after  bootstrap  msg  daily proactive  hunger
--tool    │       -sent reset  chat     alert
-  │      │        │    │      │        │
-  ▼      ▼        ▼    ▼      ▼        ▼
-┌─────────────────────────────────────────────┐
-│           CharacterEngine (单例)              │
-│                                             │
-│  SkillSystem  ←── 工具自动记录 + 领域推断     │
-│  MemoryGraph  ←── 自动提取 + 对话时召回       │
-│  ChatEval     ←── 意图评估                   │
-│  CareSystem   ←── AI 自主调用宠物工具         │
-│  DailyTask    ←── Cron 刷新                  │
-│  LevelSystem  ←── 会话完成 EXP               │
-│                                             │
-│  getPromptContext(channelType?)              │
-│    → CHARACTER_STATE.md (挡位片段)            │
-│    → CHARACTER_TOOLS (自主操作工具)            │
-└─────────────────────────────────────────────┘
+                           用户对话 (前台)
+                                │
+                           Chat Session
+                                │
+          ┌─────────────────────┼─────────────────────┐
+          │                     │                     │
+    ┌─────┴─────┐         ┌────┴────┐          ┌─────┴─────┐
+    │  Hook 系统  │         │ 前台AI  │          │ Channel 层 │
+    └─────┬─────┘         └────┬────┘          └─────┬─────┘
+          │                    │                     │
+  ┌───────┼────────┐      SOUL.md +              渠道人格微调
+  │       │        │      CHARACTER_STATE.md
+after  bootstrap  msg
+-tool    │      -rcv/-sent
+  │      │        │
+  ▼      ▼        ▼
+┌─────────────────────────────────────────────────────┐
+│              CharacterEngine (单例)                   │
+│                                                     │
+│  属性/等级/技能/记忆/成就/背包/商城/每日任务...        │
+│                                                     │
+│  worldEvents: WorldEvent[]  ← World Agent 写入       │
+│                             → Soul Agent 消费        │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│   ┌──────────────────┐    ┌──────────────────┐      │
+│   │  World Agent      │    │  Soul Agent       │      │
+│   │  (世界代理)        │    │  (灵魂代理)        │      │
+│   │                  │    │                  │      │
+│   │  cron: 每小时     │    │  cron: 每30min   │      │
+│   │  session: 隔离    │    │  session: 隔离    │      │
+│   │  delivery: none  │    │  delivery: announce│     │
+│   │                  │    │                  │      │
+│   │  程序规则过滤     │    │  程序规则过滤     │      │
+│   │  ↓ 有事才调LLM   │    │  ↓ 有事才调LLM   │      │
+│   │  ↓               │    │  ↓               │      │
+│   │  生成: 事件/任务  │──→│  消费: 世界事件   │      │
+│   │  /剧情/奖励      │    │  决策: 说话/行动  │      │
+│   │                  │    │  /沉默           │      │
+│   │  内置·不可见·     │    │  内置·不可见·     │      │
+│   │  不可关闭        │    │  不可关闭        │      │
+│   └──────────────────┘    └────────┬─────────┘      │
+│                                    │                │
+└────────────────────────────────────┼────────────────┘
+                                     │
+                                     ▼
+                              客户端气泡/消息
+                              (宠物主动冒泡)
 ```
 
 ---
