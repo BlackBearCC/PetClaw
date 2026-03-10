@@ -33,11 +33,13 @@ export class CharacterStateSync {
     // Previous levels for change detection
     this._prevLevels = {};
     this._prevGrowthStage = 0;
+    this._prevValues = {}; // for value delta tracking
 
     // Callbacks
     this._onAttributeChange = []; // (key, level, value) => void
     this._onGrowthStageUp = [];   // (stage, stageName) => void
     this._onSoulAction = [];      // (action: {type, text?, careAction?, emotion?}) => void
+    this._onValueDelta = [];      // (key, delta, newVal) => void
   }
 
   /**
@@ -129,6 +131,15 @@ export class CharacterStateSync {
     this._onSoulAction.push(callback);
   }
 
+  /**
+   * Register callback for attribute value changes (fires when |delta| >= 1).
+   * Useful for float text UI (e.g. "+3 心情").
+   * @param {(key: string, delta: number, newVal: number) => void} callback
+   */
+  onValueDelta(callback) {
+    this._onValueDelta.push(callback);
+  }
+
   // ── Polling ──
 
   _startPolling() {
@@ -172,7 +183,7 @@ export class CharacterStateSync {
       };
     }
 
-    // Detect attribute level changes
+    // Detect attribute level changes + value deltas
     for (const [key, attr] of Object.entries(newAttrs)) {
       const prevLevel = this._prevLevels[key];
       if (prevLevel && prevLevel !== attr.level) {
@@ -183,6 +194,19 @@ export class CharacterStateSync {
         }
       }
       this._prevLevels[key] = attr.level;
+
+      // Value delta (for float text); skip on first populate (no prev value yet)
+      if (this._prevValues[key] !== undefined) {
+        const delta = attr.value - this._prevValues[key];
+        if (Math.abs(delta) >= 1) {
+          for (const cb of this._onValueDelta) {
+            try { cb(key, delta, attr.value); } catch (e) {
+              console.warn('[char-sync] onValueDelta error:', e);
+            }
+          }
+        }
+      }
+      this._prevValues[key] = attr.value;
     }
     this._attributes = newAttrs;
 
@@ -222,6 +246,16 @@ export class CharacterStateSync {
     } catch (e) {
       console.warn(`[char-sync] ${method} failed:`, e.message || e);
       return null;
+    }
+  }
+
+  /**
+   * Handle server-pushed state update (bypasses polling delay).
+   * Called from the character-event WebSocket broadcast handler.
+   */
+  handleServerPush(payload) {
+    if (payload?.kind === 'state-update' && payload.state) {
+      this._applyState(payload.state);
     }
   }
 

@@ -399,6 +399,23 @@ function getEngine(): CharacterEngine {
       void registerCharacterCronJobs(_cron);
     }
 
+    // Broadcast attribute/growth/level changes to connected WebSocket clients immediately
+    // (client otherwise only learns via 10s polling)
+    engine.bus.on("attribute:level-change", () => {
+      if (!_broadcast || !engine) return;
+      _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
+    });
+
+    engine.bus.on("growth:stage-up", () => {
+      if (!_broadcast || !engine) return;
+      _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
+    });
+
+    engine.bus.on("level:up", () => {
+      if (!_broadcast || !engine) return;
+      _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
+    });
+
     // Event-driven Soul Agent: trigger on every chat interval (every 5 messages)
     // Uses cached job ID + enqueueRun (non-blocking) + cooldown guard
     engine.bus.on("chat:interval", () => {
