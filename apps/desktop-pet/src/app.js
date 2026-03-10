@@ -1089,24 +1089,35 @@ class OpenClawPet {
 
   /**
    * 对话意图评估结果：intent → 动画 + 气泡（仅正向 intent 弹气泡，负向只做动画）
+   * 优先调用 CharacterAI 生成人设感知文案，busy 或失败时 fallback 到固定文案。
    */
   _handleChatEval({ intent } = {}) {
-    // Positive intents: play happy animation + optional bubble
-    const POSITIVE_BUBBLES = {
-      praise:    ['嘿嘿，主人夸我了~', '喵喵喵！好开心！', '被夸了！今天要加倍努力！'],
+    const BUBBLE_INTENTS = new Set(['praise', 'playful', 'gratitude', 'deep_talk', 'sad_share']);
+    const FALLBACK_BUBBLES = {
+      praise:    ['嘿嘿，主人夸我了~', '被夸了！好开心！'],
       playful:   ['嘻嘻嘻～', '哈哈哈好好玩！'],
       gratitude: ['不用谢不用谢~', '能帮上忙就好！'],
+      deep_talk: ['嗯...我听着呢', '谢谢主人愿意跟我分享'],
+      sad_share: ['会好起来的...', '我陪着你喵'],
     };
-    if (POSITIVE_BUBBLES[intent]) {
-      const msgs = POSITIVE_BUBBLES[intent];
-      const msg = msgs[Math.floor(Math.random() * msgs.length)];
-      this.bubble.show(msg, 3000);
+
+    if (['praise', 'playful', 'gratitude'].includes(intent)) {
       this.stateMachine.transition('happy', { force: true, duration: 2000 });
-      return;
-    }
-    // Negative intents: shrink animation only, no bubble to avoid awkward back-talk
-    if (intent === 'angry' || intent === 'impatient') {
+    } else if (['angry', 'impatient'].includes(intent)) {
       this.stateMachine.transition('sad', { force: true, duration: 1500 });
+    }
+
+    if (!BUBBLE_INTENTS.has(intent)) return;
+
+    // Try CharacterAI first; fallback to fixed text if busy or failed
+    if (this.charAI && !this.charAI.isBusy) {
+      this.charAI.generateChatEvalReaction(intent).then(text => {
+        const msg = text || FALLBACK_BUBBLES[intent][Math.floor(Math.random() * FALLBACK_BUBBLES[intent].length)];
+        this.bubble.show(msg, 4000);
+      });
+    } else {
+      const msgs = FALLBACK_BUBBLES[intent];
+      this.bubble.show(msgs[Math.floor(Math.random() * msgs.length)], 3000);
     }
   }
 
