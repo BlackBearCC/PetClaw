@@ -200,6 +200,9 @@ let hooksRegistered = false;
 let _broadcast: GatewayBroadcastFn | null = null;
 let _cron: CronService | null = null;
 let cronJobsRegistered = false;
+let _soulAgentJobId: string | null = null;
+let _soulAgentLastTriggeredAt = 0;
+const SOUL_AGENT_CHAT_COOLDOWN_MS = 2 * 60 * 1000; // 2 min cooldown between chat-triggered runs
 
 /**
  * Per-session cache of the last user message, used to pair with
@@ -397,14 +400,13 @@ function getEngine(): CharacterEngine {
     }
 
     // Event-driven Soul Agent: trigger on every chat interval (every 5 messages)
+    // Uses cached job ID + enqueueRun (non-blocking) + cooldown guard
     engine.bus.on("chat:interval", () => {
-      if (!_cron) return;
-      void _cron.list().then((jobs) => {
-        const soulJob = jobs.find((j: { name?: string; id?: string }) => j.name === "Character Soul Agent");
-        if (soulJob?.id) {
-          void _cron!.run(soulJob.id, "force").catch(() => {});
-        }
-      }).catch(() => {});
+      if (!_cron || !_soulAgentJobId) return;
+      const now = Date.now();
+      if (now - _soulAgentLastTriggeredAt < SOUL_AGENT_CHAT_COOLDOWN_MS) return;
+      _soulAgentLastTriggeredAt = now;
+      void _cron.enqueueRun(_soulAgentJobId, "force").catch(() => {});
     });
 
     // Register hooks once
@@ -484,7 +486,7 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
     }
 
     if (!existingNames.has("Character Soul Agent")) {
-      await cron.add({
+      const job = await cron.add({
         name: "Character Soul Agent",
         schedule: { kind: "cron", expr: "*/30 * * * *" },
         sessionTarget: "isolated",
@@ -492,7 +494,13 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
         payload: { kind: "agentTurn", message: SOUL_AGENT_MESSAGE, lightContext: true },
         delivery: { mode: "none" },
       } as Parameters<typeof cron.add>[0]);
-      console.log("[character] registered Soul Agent cron job");
+      _soulAgentJobId = (job as { id?: string })?.id ?? null;
+      console.log("[character] registered Soul Agent cron job", _soulAgentJobId);
+    } else {
+      // Already registered — resolve the ID from the existing list
+      const existing = ((page as { items?: Array<{ name?: string; id?: string }> }).items ?? [])
+        .find((j) => j.name === "Character Soul Agent");
+      _soulAgentJobId = existing?.id ?? null;
     }
   } catch (e) {
     console.error("[character] failed to register cron jobs:", e);
