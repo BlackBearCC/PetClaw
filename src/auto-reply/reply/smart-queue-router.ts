@@ -13,6 +13,7 @@ import { AGENT_LANE_SUBAGENT } from "../../agents/lanes.js";
 import { callGateway } from "../../gateway/call.js";
 import { classifierLLMComplete } from "../../gateway/server-methods/character.js";
 import { logVerbose } from "../../globals.js";
+import { getLogger } from "../../logging/logger.js";
 import type { GetReplyOptions } from "../types.js";
 import { buildParallelContextSnapshot } from "./parallel-context.js";
 import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
@@ -35,28 +36,46 @@ async function classifyMessage(params: {
   const lastUser = recent.find((m) => m.role === "user")?.text ?? "";
   const lastAssistant = recent.find((m) => m.role === "assistant")?.text ?? "";
 
-  const prompt = `你是消息分类器。判断用户新消息是否与当前正在执行的任务相关。
+  const prompt = `你是消息路由分类器，判断新消息应"等待当前任务完成后处理"还是"立即独立处理"。
 
-当前任务上下文（最近一轮对话）：
+当前上下文（最近一轮对话）：
 用户: ${lastUser}
-助手: ${lastAssistant}（正在执行中...）
+助手: ${lastAssistant}（当前仍在处理中...）
 
 用户新消息: ${newMessage}
 
-如果新消息是对当前任务的补充、修正、催促或追问，返回 {"route":"steer"}
-如果新消息是独立的新话题、闲聊、或新任务，返回 {"route":"parallel"}
+判断规则：
+- steer：仅当助手正在执行具体任务（写代码、修改文件、分析数据、搜索等），且新消息是对该任务的直接补充/修正/催促/追问
+- parallel：其他所有情况，包括日常聊天、问候、闲聊、新话题、角色扮演对话、无明确执行中任务时的任何消息
 
-只返回 JSON，不要解释。`;
+只返回 JSON，不要解释。示例：{"route":"parallel"}`;
+
+  const log = getLogger();
+  log.info(
+    {
+      message: `[smart-router] classify prompt snapshot | newMessage="${newMessage.slice(0, 100)}" lastAssistant="${lastAssistant.slice(0, 150)}"`,
+    },
+    "smart-router",
+  );
 
   try {
     const raw = await classifierLLMComplete(prompt);
-    if (!raw) return "steer"; // Default to safe fallback
+    if (!raw) {
+      log.info({ message: "[smart-router] classify result: fallback→steer (empty response)" }, "smart-router");
+      return "steer";
+    }
     const match = raw.match(/\{[\s\S]*?\}/);
-    if (!match) return "steer";
+    if (!match) {
+      log.info({ message: `[smart-router] classify result: fallback→steer (no JSON) raw="${raw.slice(0, 200)}"` }, "smart-router");
+      return "steer";
+    }
     const parsed = JSON.parse(match[0]) as { route?: string };
-    if (parsed.route === "parallel") return "parallel";
-    return "steer";
-  } catch {
+    const route = parsed.route === "parallel" ? "parallel" : "steer";
+    log.info({ message: `[smart-router] classify result: ${route} | raw="${raw.slice(0, 200)}"` }, "smart-router");
+    return route;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.info({ message: `[smart-router] classify result: fallback→steer (error: ${msg})` }, "smart-router");
     return "steer";
   }
 }
@@ -144,6 +163,8 @@ export async function smartRouteOrEnqueue(params: {
     return "fallback-enqueued";
   }
 
+  const log = getLogger();
+  log.info({ message: `[smart-router] parallel sub-agent spawned (runId=${result.runId})` }, "smart-router");
   logVerbose(`smart-queue-router: parallel sub-agent spawned (runId=${result.runId})`);
   return "parallel-spawned";
 }

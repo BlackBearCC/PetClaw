@@ -40,7 +40,7 @@ export interface InventorySlot {
 // ─── Item Definitions ───
 
 export const ITEM_DEFS: Record<string, ItemDef> = {
-  42号口粮: {
+  "42号口粮": {
     id: "42号口粮",
     name: "42号口粮",
     icon: "🧊",
