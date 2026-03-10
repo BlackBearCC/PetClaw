@@ -203,6 +203,7 @@ export class CharacterEngine {
     this.learning.tick(deltaMs);
     this.care.tick();
     this.dailyTasks.tick(deltaMs);
+    this.adventures.tick(deltaMs);
 
     // Passive recovery (check every 30s)
     this._passiveAcc += deltaMs;

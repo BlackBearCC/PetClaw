@@ -147,13 +147,6 @@ export class AdventureSystem {
 
     this.bus.emit("adventure:started", { adventure });
 
-    // For idle adventures, schedule auto-completion
-    if (params.type === "idle") {
-      setTimeout(() => {
-        this.completeAdventure(id);
-      }, params.duration * 60 * 1000);
-    }
-
     return adventure;
   }
 
@@ -295,6 +288,24 @@ export class AdventureSystem {
     this.bus.emit("adventure:cancelled", { adventure });
 
     return { ok: true };
+  }
+
+  /**
+   * Tick - called periodically to check adventure completion
+   */
+  tick(deltaMs: number): void {
+    if (!this.activeAdventureId) return;
+
+    const adventure = this.adventures.get(this.activeAdventureId);
+    if (!adventure || adventure.status !== "ongoing") return;
+
+    // Check if adventure duration has elapsed
+    const elapsedMs = Date.now() - (adventure.startedAt ?? adventure.createdAt);
+    const durationMs = adventure.duration * 60 * 1000;
+
+    if (elapsedMs >= durationMs) {
+      this.completeAdventure(adventure.id);
+    }
   }
 
   /**
