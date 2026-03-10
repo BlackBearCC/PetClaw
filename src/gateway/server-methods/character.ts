@@ -519,6 +519,20 @@ function getEngine(): CharacterEngine {
       void _cron.enqueueRun(_soulAgentJobId, "force").catch(() => {});
     });
 
+    // First-time experience: skill epiphany showcase
+    engine.bus.on("skill:epiphany", (data) => {
+      if (!_broadcast || !engine) return;
+      if (engine.firstTime.shouldShowSkillCapability()) {
+        engine.firstTime.markSkillShown();
+        _broadcast("character", {
+          kind: "first-time-showcase",
+          type: "skill",
+          domain: data.domainName,
+          text: `我学会了新技能：${data.domainName}领域领悟！`,
+        }, { dropIfSlow: false });
+      }
+    });
+
     // Register hooks once
     if (!hooksRegistered) {
       hooksRegistered = true;
