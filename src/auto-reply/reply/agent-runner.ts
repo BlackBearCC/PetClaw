@@ -217,7 +217,10 @@ export async function runReplyAgent(params: {
   }
 
   if (activeRunQueueAction === "enqueue-followup") {
-    await smartRouteOrEnqueue({ queueKey, followupRun, resolvedQueue, opts });
+    const routeResult = await smartRouteOrEnqueue({ queueKey, followupRun, resolvedQueue, opts });
+    if (routeResult === "parallel-spawned" && opts?.onBlockReply) {
+      await opts.onBlockReply({ text: "[ 智能调度 ] 已为你启动并行处理，稍等~" });
+    }
     await touchActiveSessionEntry();
     typing.cleanup();
     return undefined;

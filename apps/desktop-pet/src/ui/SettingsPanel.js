@@ -69,12 +69,17 @@ export class SettingsPanel {
           <div class="settings-hint">选择 Provider 后自动填充默认模型</div>
         </div>
 
-        <!-- 分类器模型（智能队列分流用） -->
+        <!-- 智能调度模型 -->
         <div class="settings-section-title classifier-toggle" id="set-classifier-toggle">
-          分类器模型 <span class="toggle-arrow">▶</span>
-          <span class="settings-hint" style="margin-left:6px;font-size:11px;color:#999">智能队列分流用，默认百炼 qwen-plus</span>
+          智能调度 <span class="toggle-arrow">▶</span>
+        </div>
+        <div class="settings-hint" style="padding:0 12px 4px;font-size:11px;color:#999;line-height:1.4">
+          AI 忙碌时自动判断新消息：相关内容排队等待，新话题立即并行处理
         </div>
         <div class="settings-classifier-body" id="set-classifier-body" style="display:none">
+          <div class="settings-hint" style="padding:2px 12px 6px;font-size:10px;color:#bbb">
+            配置调度用的轻量模型，留空则跟随主 AI。默认百炼 qwen-plus
+          </div>
           <div class="settings-group">
             <label>Provider</label>
             <select id="set-clf-provider">
