@@ -38,6 +38,8 @@ export type CharacterEventMap = {
   'care:rest-end': { type: string; effects: Record<string, number> };
   /** Login streak updated */
   'login:streak': { streak: number; date: string };
+  /** Online 30 minutes reached (daily once) */
+  'login:online30min': { minutes: number };
   /** Coins earned */
   'shop:coin-earn': { amount: number; source: string; balance: number };
   /** Item purchased from shop */

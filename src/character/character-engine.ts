@@ -195,6 +195,16 @@ export class CharacterEngine {
       const coins = Math.min(50, 5 * streak);
       this.shop.earnCoins(coins, "login_streak");
     });
+
+    // Online 30min → award 10 coins (daily once)
+    this.bus.on("login:online30min", () => {
+      this.shop.earnCoins(10, "online_30min");
+    });
+
+    // Chat milestone: every 20th message → 5 coins
+    this.bus.on("chat:interval", ({ count }) => {
+      this.shop.earnCoins(5, `chat_milestone_${count}`);
+    });
   }
 
   /** Main tick — call from game loop / setInterval */

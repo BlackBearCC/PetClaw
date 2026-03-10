@@ -185,7 +185,13 @@ export class DailyTaskSystem {
     // Wire up event listeners for counter tracking
     this._bus.on("interact", (data) => {
       if (data.action === "click") this._counters.clickCount++;
-      if (data.action === "chat") this._counters.chatCount++;
+      if (data.action === "chat") {
+        this._counters.chatCount++;
+        // 聊天里程碑：每日第 20 条发放 5 星币
+        if (this._counters.chatCount === 20) {
+          this._bus.emit("chat:interval", { count: 20, interval: 20 });
+        }
+      }
       this._checkCompletion();
       this._save();
     });

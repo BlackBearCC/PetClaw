@@ -98,7 +98,13 @@ export class LoginTracker {
       return;
     }
 
+    const prevMinutes = this._todayOnlineMinutes;
     this._todayOnlineMinutes += elapsed;
+
+    // 在线满 30min 奖励 10 星币（每日一次）
+    if (prevMinutes < 30 && this._todayOnlineMinutes >= 30) {
+      this._bus.emit("login:online30min", { minutes: 30 });
+    }
 
     // Periodic save to avoid losing online time on crash
     this._saveAcc += elapsed * 60_000;
