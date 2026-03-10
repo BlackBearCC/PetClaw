@@ -174,6 +174,72 @@ async function characterLLMComplete(prompt: string): Promise<string | null> {
   }
 }
 
+// ─── Classifier LLM (smart queue router) ───
+// Reads `character.classifier` from openclaw.json; falls back to the primary model.
+// Default model: qwen-plus on Bailian.
+
+const CLASSIFIER_DEFAULTS = {
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  model: "qwen-plus",
+};
+
+function resolveClassifierLLMConfig(): { baseUrl: string; apiKey: string; model: string } | null {
+  const cfg = loadConfig();
+  const classifier = (cfg as Record<string, unknown> as {
+    character?: { classifier?: { baseUrl?: string; apiKey?: string; model?: string } };
+  }).character?.classifier;
+
+  if (classifier?.baseUrl && classifier?.apiKey && classifier?.model) {
+    return {
+      baseUrl: classifier.baseUrl,
+      apiKey: String(classifier.apiKey),
+      model: classifier.model,
+    };
+  }
+
+  // Fall back to primary model config
+  const primary = resolveCharacterLLMConfig();
+  if (primary) return primary;
+
+  // Last resort: use defaults with primary apiKey if available
+  if (classifier?.apiKey) {
+    return {
+      baseUrl: classifier.baseUrl || CLASSIFIER_DEFAULTS.baseUrl,
+      apiKey: String(classifier.apiKey),
+      model: classifier.model || CLASSIFIER_DEFAULTS.model,
+    };
+  }
+
+  return null;
+}
+
+export async function classifierLLMComplete(prompt: string): Promise<string | null> {
+  const llmCfg = resolveClassifierLLMConfig();
+  if (!llmCfg) return null;
+  try {
+    const res = await fetch(`${llmCfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${llmCfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: llmCfg.model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 128,
+        temperature: 0.1,
+        stream: false,
+        enable_thinking: false,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Tool → Domain mapping (for automatic skill tracking) ───
 
 const TOOL_DOMAIN_MAP: Record<string, string> = {

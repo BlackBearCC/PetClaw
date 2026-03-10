@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import { AGENT_LANE_SUBAGENT } from "../../agents/lanes.js";
 import { callGateway } from "../../gateway/call.js";
-import { characterLLMComplete } from "../../gateway/server-methods/character.js";
+import { classifierLLMComplete } from "../../gateway/server-methods/character.js";
 import { logVerbose } from "../../globals.js";
 import type { GetReplyOptions } from "../types.js";
 import { buildParallelContextSnapshot } from "./parallel-context.js";
@@ -49,7 +49,7 @@ async function classifyMessage(params: {
 只返回 JSON，不要解释。`;
 
   try {
-    const raw = await characterLLMComplete(prompt);
+    const raw = await classifierLLMComplete(prompt);
     if (!raw) return "steer"; // Default to safe fallback
     const match = raw.match(/\{[\s\S]*?\}/);
     if (!match) return "steer";

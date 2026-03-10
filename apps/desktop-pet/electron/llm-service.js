@@ -844,6 +844,12 @@ class LLMService {
       gatewayReady: this.gatewayReady,
       wsConnected: this.wsConnected,
       gatewayUrl: this.gatewayUrl,
+      // Classifier model
+      classifierProvider: this.config.classifierProvider || '',
+      classifierBaseUrl: this.config.classifierBaseUrl || '',
+      classifierModel: this.config.classifierModel || '',
+      classifierApiKey: this.config.classifierApiKey ? '****' : '',
+      hasClassifierApiKey: !!this.config.classifierApiKey,
     };
   }
 
@@ -994,6 +1000,21 @@ class LLMService {
           config.agents.defaults.model.primary = `${providerKey}/${modelName}`;
         }
       }
+
+      // ── Classifier model config (for smart queue router) ──
+      // Resolve effective classifier config: explicit fields → fallback to main AI
+      const clfProvider = aiConfig.classifierProvider || aiConfig.aiProvider;
+      const clfProviderInfo = AI_PROVIDERS[clfProvider] || {};
+      const clfBaseUrl = aiConfig.classifierBaseUrl || clfProviderInfo.baseUrl || aiConfig.aiBaseUrl || '';
+      const clfApiKey = aiConfig.classifierApiKey || aiConfig.aiApiKey || '';
+      const clfModel = aiConfig.classifierModel || clfProviderInfo.defaultModel || 'qwen-plus';
+
+      if (!config.character) config.character = {};
+      config.character.classifier = {
+        baseUrl: clfBaseUrl,
+        apiKey: clfApiKey,
+        model: clfModel,
+      };
 
       fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf-8');
       console.log('[llm] OpenClaw config written to', configFile);
