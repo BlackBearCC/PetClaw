@@ -19,7 +19,8 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "openclaw": "workspace:*"
   },
   "devDependencies": {
     "electron": "^33.4.11",

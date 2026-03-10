@@ -171,6 +171,9 @@ class LLMService {
       return;
     }
 
+    // 自动构建：如果 dist 不存在（新环境首次运行），先 build
+    await this._ensureBuilt(clawBin);
+
     console.log(`[llm] Starting Gateway via: ${clawBin}`);
 
     // gateway.cmd 自带参数直接跑；其他方式手动传参
@@ -1024,6 +1027,47 @@ class LLMService {
     }
 
     return { ok: true };
+  }
+
+  // ===== Auto-build =====
+
+  /**
+   * 确保 openclaw dist 已构建。新设备 clone 后首次运行时自动触发。
+   * clawBin 是 workspace 链接的路径，从它推导项目根目录。
+   */
+  async _ensureBuilt(clawBin) {
+    try {
+      const { execSync } = require('child_process');
+
+      // 从 bin 路径找项目根（node_modules/openclaw -> 项目根）
+      const resolvedBin = fs.realpathSync(clawBin);
+      // resolvedBin 类似 /path/to/crayfish-bot/openclaw.mjs 或 dist/index.js
+      let projectRoot = path.dirname(resolvedBin);
+      // 向上找到包含 package.json 且 name=openclaw 的目录
+      for (let i = 0; i < 4; i++) {
+        const pkgPath = path.join(projectRoot, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+          try {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+            if (pkg.name === 'openclaw') break;
+          } catch {}
+        }
+        projectRoot = path.dirname(projectRoot);
+      }
+
+      const distIndex = path.join(projectRoot, 'dist', 'index.js');
+      if (fs.existsSync(distIndex)) return; // 已构建，跳过
+
+      console.log('[llm] dist not found, building openclaw (first run)...');
+      execSync('pnpm build', {
+        cwd: projectRoot,
+        stdio: 'inherit',
+        timeout: 120000,
+      });
+      console.log('[llm] Build complete.');
+    } catch (e) {
+      console.warn('[llm] Auto-build failed:', e.message);
+    }
   }
 
   // ===== SOUL.md sync =====
