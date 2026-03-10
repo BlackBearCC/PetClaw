@@ -101,6 +101,26 @@ html, body {
   display: flex;
   align-items: center;
   gap: 7px;
+  position: relative;
+}
+
+.ctx-stat-row[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  padding: 4px 8px;
+  background: rgba(30, 30, 30, 0.95);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .ctx-stat-icon {
@@ -135,6 +155,15 @@ html, body {
 .ctx-stat--hunger { background: var(--clr-primary); }
 .ctx-stat--mood   { background: var(--clr-purple); }
 .ctx-stat--health { background: var(--clr-green); }
+
+.ctx-stat-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 22px;
+  text-align: right;
+  flex-shrink: 0;
+}
 
 /* ===== 气泡 ===== */
 #bubble-container {

@@ -42,22 +42,20 @@ export class ContextMenu {
     if (this.getStats) {
       const s = this.getStats();
       const iconBase = '../assets/icons';
+      const statInfo = [
+        { key: 'hunger', icon: `${iconBase}/attribute/attr_hunger.png`, label: '饱食度', desc: '角色的饱腹程度，低于30会变得饥饿' },
+        { key: 'mood', icon: `${iconBase}/attribute/attr_mood.png`, label: '心情', desc: '角色的心情好坏，低于30会变得沮丧' },
+        { key: 'health', icon: `${iconBase}/attribute/attr_health.png`, label: '健康', desc: '角色的身体健康，低于40会生病' },
+      ];
       const block = document.createElement('div');
       block.className = 'ctx-stats';
-      block.innerHTML = `
-        <div class="ctx-stat-row">
-          <span class="ctx-stat-icon"><img src="${iconBase}/attribute/attr_hunger.png" alt="饱食"></span>
-          <div class="ctx-stat-track"><div class="ctx-stat-fill ctx-stat--hunger" style="width:${s.hunger}%"></div></div>
+      block.innerHTML = statInfo.map(st => `
+        <div class="ctx-stat-row" data-tooltip="${st.desc}">
+          <span class="ctx-stat-icon"><img src="${st.icon}" alt="${st.label}"></span>
+          <div class="ctx-stat-track"><div class="ctx-stat-fill ctx-stat--${st.key}" style="width:${s[st.key]}%"></div></div>
+          <span class="ctx-stat-value">${Math.round(s[st.key])}</span>
         </div>
-        <div class="ctx-stat-row">
-          <span class="ctx-stat-icon"><img src="${iconBase}/attribute/attr_mood.png" alt="心情"></span>
-          <div class="ctx-stat-track"><div class="ctx-stat-fill ctx-stat--mood" style="width:${s.mood}%"></div></div>
-        </div>
-        <div class="ctx-stat-row">
-          <span class="ctx-stat-icon"><img src="${iconBase}/attribute/attr_health.png" alt="健康"></span>
-          <div class="ctx-stat-track"><div class="ctx-stat-fill ctx-stat--health" style="width:${s.health}%"></div></div>
-        </div>
-      `;
+      `).join('');
       menu.appendChild(block);
       const sep = document.createElement('div');
       sep.className = 'ctx-separator';
