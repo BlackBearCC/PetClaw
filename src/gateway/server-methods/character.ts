@@ -981,13 +981,13 @@ export const characterHandlers: GatewayRequestHandlers = {
       const e = getEngine();
       const result = e.todos.verifyTodo(todoId);
 
-      // Award rewards if verification successful
+      // Award rewards — isolated so a reward failure doesn't un-verify the todo
       if (result.ok && result.rewards) {
-        if (result.rewards.exp) {
-          e.levels.gainExp(result.rewards.exp, "todo_verified");
-        }
-        if (result.rewards.coins) {
-          e.shop.earnCoins(result.rewards.coins, "todo_verified");
+        try {
+          if (result.rewards.exp) e.levels.gainExp(result.rewards.exp, "todo_verified");
+          if (result.rewards.coins) e.shop.earnCoins(result.rewards.coins, "todo_verified");
+        } catch {
+          // rewards failed; todo is still verified
         }
       }
 
@@ -1093,13 +1093,13 @@ export const characterHandlers: GatewayRequestHandlers = {
       if ("error" in advResult) {
         (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, advResult.error));
       } else {
-        // Award rewards
+        // Award rewards — isolated so a reward failure doesn't un-complete the adventure
         if (advResult.result?.rewards) {
-          if (advResult.result.rewards.exp) {
-            e.levels.gainExp(advResult.result.rewards.exp, "adventure");
-          }
-          if (advResult.result.rewards.coins) {
-            e.shop.earnCoins(advResult.result.rewards.coins, "adventure");
+          try {
+            if (advResult.result.rewards.exp) e.levels.gainExp(advResult.result.rewards.exp, "adventure");
+            if (advResult.result.rewards.coins) e.shop.earnCoins(advResult.result.rewards.coins, "adventure");
+          } catch {
+            // rewards failed; adventure is still completed
           }
         }
         (respond as Function)(true, { ok: true, adventure: advResult });

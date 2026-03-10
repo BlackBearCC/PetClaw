@@ -12,7 +12,7 @@ import type { PersistenceStore } from "./attribute-engine.js";
 
 export type AdventureType = "idle" | "interactive" | "explore";
 export type AdventureRisk = "safe" | "moderate" | "dangerous";
-export type AdventureStatus = "preparing" | "ongoing" | "completed";
+export type AdventureStatus = "ongoing" | "completed";
 
 export interface AdventureRewards {
   exp: number;
@@ -101,6 +101,16 @@ export class AdventureSystem {
   }
 
   private save(): void {
+    // Trim completed adventures to last 50 to prevent unbounded growth
+    const completed = Array.from(this.adventures.values())
+      .filter((a) => a.status === "completed")
+      .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt));
+    if (completed.length > 50) {
+      for (const adv of completed.slice(50)) {
+        this.adventures.delete(adv.id);
+      }
+    }
+
     this.store.save("adventure-system", {
       adventures: Array.from(this.adventures.values()),
     });
@@ -215,11 +225,12 @@ export class AdventureSystem {
 
     let successChance = successChances[adventure.risk];
 
-    // Modify based on choice (if interactive)
-    if (adventure.selectedChoice) {
-      // Simple choice modifier: A = better chance, B = normal, C = risky
-      if (adventure.selectedChoice === "a") successChance += 0.1;
-      if (adventure.selectedChoice === "c") successChance -= 0.1;
+    // Modify based on choice position (if interactive)
+    // First choice = safer (+0.1), last choice = riskier (-0.1), middle = neutral
+    if (adventure.selectedChoice && adventure.choices?.length) {
+      const idx = adventure.choices.findIndex((c) => c.id === adventure.selectedChoice);
+      if (idx === 0) successChance += 0.1;
+      else if (idx === adventure.choices.length - 1) successChance -= 0.1;
     }
 
     const success = Math.random() < successChance;

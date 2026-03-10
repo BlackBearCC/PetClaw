@@ -276,12 +276,10 @@ export class CharacterEngine {
       resting: this.care.getRestStatus(),
       wallet: this.shop.getWallet(),
       todos: this.todos.getStats(),
-      adventure: this.adventures.getActiveAdventure()
-        ? {
-            active: true,
-            ...this.adventures.getActiveAdventure()!,
-          }
-        : { active: false },
+      adventure: (() => {
+        const adv = this.adventures.getActiveAdventure();
+        return adv ? { active: true, ...adv } : { active: false };
+      })(),
     };
   }
 
