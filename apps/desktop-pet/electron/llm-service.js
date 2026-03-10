@@ -268,7 +268,8 @@ class LLMService {
   _isGatewayAlive() {
     return new Promise((resolve) => {
       const req = http.get(`${this.gatewayUrl}/`, (res) => {
-        resolve(res.statusCode < 500);
+        // 任何响应都说明 Gateway 在运行（包括 503 Control UI 缺失）
+        resolve(res.statusCode < 600);
       });
       req.on('error', () => resolve(false));
       req.setTimeout(2000, () => { req.destroy(); resolve(false); });
