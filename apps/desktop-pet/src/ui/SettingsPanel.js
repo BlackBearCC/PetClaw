@@ -69,6 +69,44 @@ export class SettingsPanel {
           <div class="settings-hint">选择 Provider 后自动填充默认模型</div>
         </div>
 
+        <!-- 智能调度模型 -->
+        <div class="settings-section-title classifier-toggle" id="set-classifier-toggle">
+          智能调度 <span class="toggle-arrow">▶</span>
+        </div>
+        <div class="settings-hint" style="padding:0 12px 4px;font-size:11px;color:#999;line-height:1.4">
+          AI 忙碌时自动判断新消息：相关内容排队等待，新话题立即并行处理
+        </div>
+        <div class="settings-classifier-body" id="set-classifier-body" style="display:none">
+          <div class="settings-hint" style="padding:2px 12px 6px;font-size:10px;color:#bbb">
+            配置调度用的轻量模型，留空则跟随主 AI。默认百炼 qwen-plus
+          </div>
+          <div class="settings-group">
+            <label>Provider</label>
+            <select id="set-clf-provider">
+              <option value="">-- 与主 AI 相同 --</option>
+              <option value="openai">OpenAI</option>
+              <option value="bailian">百炼 (Bailian)</option>
+              <option value="doubao">豆包 (Doubao)</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="moonshot">Moonshot</option>
+              <option value="qwen">通义千问</option>
+              <option value="custom">自定义</option>
+            </select>
+          </div>
+          <div class="settings-group">
+            <label>API Base URL</label>
+            <input type="text" id="set-clf-base-url" placeholder="留空则跟随主 AI" />
+          </div>
+          <div class="settings-group">
+            <label>API Key</label>
+            <input type="password" id="set-clf-api-key" placeholder="留空则跟随主 AI" />
+          </div>
+          <div class="settings-group">
+            <label>Model</label>
+            <input type="text" id="set-clf-model" placeholder="默认 qwen-plus" />
+          </div>
+        </div>
+
         <!-- OpenClaw 设置 -->
         <div class="settings-section-title">OpenClaw</div>
         <div class="settings-group">
@@ -128,6 +166,25 @@ export class SettingsPanel {
       }
     });
 
+    // 分类器折叠/展开
+    this.element.querySelector('#set-classifier-toggle').addEventListener('click', () => {
+      const body = document.getElementById('set-classifier-body');
+      const arrow = this.element.querySelector('.toggle-arrow');
+      const visible = body.style.display !== 'none';
+      body.style.display = visible ? 'none' : 'block';
+      arrow.textContent = visible ? '▶' : '▼';
+    });
+
+    // 分类器 Provider 切换时自动填充 URL 和 Model
+    this.element.querySelector('#set-clf-provider').addEventListener('change', (e) => {
+      const key = e.target.value;
+      const preset = PROVIDER_PRESETS[key];
+      if (preset) {
+        document.getElementById('set-clf-base-url').value = preset.baseUrl;
+        document.getElementById('set-clf-model').value = preset.defaultModel;
+      }
+    });
+
     // 文件访问开关 — 即时生效，不需要点保存
     this.element.querySelector('#set-fs-full-access').addEventListener('change', (e) => {
       this._toggleFsAccess(e.target.checked);
@@ -179,6 +236,13 @@ export class SettingsPanel {
         document.getElementById('set-ai-model').value = config.aiModel || '';
         document.getElementById('set-ai-api-key').value = '';
         document.getElementById('set-ai-api-key').placeholder = config.hasApiKey ? '已设置 (****)' : '输入 API Key';
+
+        // 分类器字段
+        document.getElementById('set-clf-provider').value = config.classifierProvider || '';
+        document.getElementById('set-clf-base-url').value = config.classifierBaseUrl || '';
+        document.getElementById('set-clf-model').value = config.classifierModel || '';
+        document.getElementById('set-clf-api-key').value = '';
+        document.getElementById('set-clf-api-key').placeholder = config.hasClassifierApiKey ? '已设置 (****)' : '留空则跟随主 AI';
 
         // OpenClaw 字段
         document.getElementById('set-agent-id').value = config.agentId || 'main';
@@ -255,6 +319,10 @@ export class SettingsPanel {
       aiProvider: document.getElementById('set-ai-provider').value,
       aiBaseUrl: document.getElementById('set-ai-base-url').value.trim(),
       aiModel: document.getElementById('set-ai-model').value.trim(),
+      // 分类器模型
+      classifierProvider: document.getElementById('set-clf-provider').value,
+      classifierBaseUrl: document.getElementById('set-clf-base-url').value.trim(),
+      classifierModel: document.getElementById('set-clf-model').value.trim(),
     };
 
     // 只在有输入时更新敏感字段
@@ -263,6 +331,9 @@ export class SettingsPanel {
 
     const newApiKey = document.getElementById('set-ai-api-key').value.trim();
     if (newApiKey) config.aiApiKey = newApiKey;
+
+    const newClfApiKey = document.getElementById('set-clf-api-key').value.trim();
+    if (newClfApiKey) config.classifierApiKey = newClfApiKey;
 
     try {
       // 使用 saveAndApply 写入本地配置 + OpenClaw 主配置 + 重连

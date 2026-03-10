@@ -52,6 +52,7 @@ import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-r
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
+import { smartRouteOrEnqueue } from "./smart-queue-router.js";
 import { createReplyMediaPathNormalizer } from "./reply-media-paths.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
@@ -216,7 +217,10 @@ export async function runReplyAgent(params: {
   }
 
   if (activeRunQueueAction === "enqueue-followup") {
-    enqueueFollowupRun(queueKey, followupRun, resolvedQueue);
+    const routeResult = await smartRouteOrEnqueue({ queueKey, followupRun, resolvedQueue, opts });
+    if (routeResult === "parallel-spawned" && opts?.onBlockReply) {
+      await opts.onBlockReply({ text: "[ 智能调度 ] 已为你启动并行处理，稍等~" });
+    }
     await touchActiveSessionEntry();
     typing.cleanup();
     return undefined;
