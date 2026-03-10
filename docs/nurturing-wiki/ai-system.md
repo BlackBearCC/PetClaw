@@ -571,19 +571,19 @@ shop-purchases.json    — { date, purchases: { itemId: count, ... } }
 6. ✅ `message:sent` hook 全渠道自动记忆提取
 7. ✅ 记忆提示语注入 getPromptContext()
 
-### P1 — 双 Agent + 领域推断
+### P1 — 双 Agent + 宠物专属 Tools
 
-8. World Agent — 程序规则前置 + agentTurn 生成世界事件
-9. Soul Agent — 程序规则前置 + agentTurn 角色自主决策
-10. 宠物专属 Tools (character_self_care / character_remember / character_express_mood / character_world_event)
-11. `message:received` hook 领域关键词推断
-12. 渠道人格微调
+8. ✅ World Agent — 程序规则前置 + agentTurn 生成世界事件
+9. ✅ Soul Agent — 程序规则前置 + agentTurn 角色自主决策
+10. ✅ 宠物专属 Tools (character_self_care / character_remember / character_express_mood)
+11. ✅ `message:received` hook 领域关键词推断（已实现）
+12. ~~渠道人格微调~~ — 已删除
 
 ### P2 — 深度集成
 
-13. Session 集成（时长 EXP / 任务计数）
-14. World Agent 个性化每日任务生成
-15. Soul Agent 人格阶段进化
+13. ❌ Session 集成（时长 EXP / 任务计数）
+14. ❌ World Agent 个性化每日任务生成
+15. ❌ Soul Agent 人格阶段进化
 
 ---
 
