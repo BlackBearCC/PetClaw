@@ -387,6 +387,15 @@ function registerCharacterHooks(eng: CharacterEngine): void {
     }
     if (content) {
       engine.chatEval.onAssistantMessage(content);
+      
+      // First-time experience: mark first chat and check task success
+      if (!engine.firstTime.isStepCompleted("first_chat")) {
+        engine.firstTime.completeStep("first_chat");
+      }
+      // If this is a response to a task, mark task success
+      if (userMsg && !engine.firstTime.isStepCompleted("first_task_success")) {
+        engine.firstTime.completeStep("first_task_success");
+      }
     }
   });
 
@@ -402,6 +411,15 @@ function registerCharacterHooks(eng: CharacterEngine): void {
 
         // Record tool → skill almanac + achievements + daily task counter
         engine.recordToolUse(toolName);
+
+        // First-time experience: mark first task if this is a capability tool
+        if (["web_search", "web_fetch", "code_execute", "file_read", "file_edit"].includes(toolName)) {
+          if (!engine.firstTime.isStepCompleted("first_task_success")) {
+            engine.firstTime.recordFirstTask(toolName === "web_search" ? "search" : 
+                                              toolName === "code_execute" ? "code" : "general");
+            engine.firstTime.completeStep("first_task_success");
+          }
+        }
 
         // Map tool → domain for attribute XP
         const domain = TOOL_DOMAIN_MAP[toolName];
@@ -874,6 +892,12 @@ export const characterHandlers: GatewayRequestHandlers = {
     try {
       const e = getEngine();
       const result = e.care.feed(itemId);
+      
+      // First-time experience: mark first feed
+      if (result.ok && !e.firstTime.isStepCompleted("first_feed")) {
+        e.firstTime.completeStep("first_feed");
+      }
+      
       (respond as Function)(result.ok, { ...result, state: e.getState() });
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
