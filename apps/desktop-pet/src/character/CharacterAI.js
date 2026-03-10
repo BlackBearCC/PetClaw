@@ -193,32 +193,4 @@ export class CharacterAI {
     }
   }
 
-  // ─── 对话意图反应 ───
-
-  async generateChatEvalReaction(intent) {
-    if (this._busy) return null;
-    this._busy = true;
-    try {
-      const persona = await this._getPersona();
-      const intentDesc = {
-        praise:    '主人刚刚夸奖了你，你感到很开心',
-        playful:   '主人在和你开玩笑、调皮互动',
-        gratitude: '主人表达了对你的感谢',
-        deep_talk: '主人刚刚和你进行了一次深入的情感交流',
-        sad_share: '主人向你倾诉了负面情绪，你想给予安慰',
-      }[intent];
-      if (!intentDesc) return null;
-
-      const prompt = this._buildPrompt(persona, intentDesc,
-        '用完全符合角色人设的口吻，说一句回应此刻心情的话。\n约束：12字以内，自然口语，末尾可加一个emoji，不要引号，直接输出文字。');
-
-      const text = await this.electronAPI.characterAIComplete(prompt);
-      return text?.trim().slice(0, 30) || null;
-    } catch (e) {
-      console.warn('[CharacterAI] generateChatEvalReaction failed:', e.message);
-      return null;
-    } finally {
-      this._busy = false;
-    }
-  }
 }
