@@ -805,6 +805,9 @@ class PetClawPet {
     // 全局 mousemove：根据鼠标位置决定是否穿透
     // 面板区域 → 不穿透；canvas 非透明像素 → 不穿透；其他 → 穿透
     this._mouseMoveHandler = (e) => {
+      // 拖拽中跳过穿透更新，防止 setIgnoreMouse(true) 导致 Windows 丢失鼠标捕获
+      if (this.dragHandler?.isDragging) return;
+
       // 1. 鼠标在打开的面板上 → 不穿透
       const chatPanel = document.getElementById('chat-panel');
       const settingsPanel = document.getElementById('settings-panel');

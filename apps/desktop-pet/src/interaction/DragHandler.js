@@ -58,7 +58,8 @@ export class DragHandler {
       this.isDragging = true;
       this.sm.transition('drag', { force: true });
       this.behaviors.recordInteraction();
-      if (this.electronAPI?.startDrag) this.electronAPI.startDrag();
+      // 拖拽期间锁定鼠标不穿透，防止 Windows 丢失鼠标捕获导致坐标跳变
+      if (this.electronAPI?.setIgnoreMouse) this.electronAPI.setIgnoreMouse(false);
     }
 
     if (this.electronAPI?.moveWindow) {
@@ -76,6 +77,11 @@ export class DragHandler {
 
     document.removeEventListener('mousemove', this._onMouseMove);
     document.removeEventListener('mouseup', this._onMouseUp);
+
+    // 拖拽结束，恢复穿透（_setupMousePassthrough 在下次 mousemove 精确接管）
+    if (wasDragging && this.electronAPI?.setIgnoreMouse) {
+      this.electronAPI.setIgnoreMouse(true);
+    }
 
     if (!wasDragging) return;
 
