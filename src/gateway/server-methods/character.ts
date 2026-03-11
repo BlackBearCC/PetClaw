@@ -312,6 +312,11 @@ function registerCharacterHooks(eng: CharacterEngine): void {
     const content = engine.getPromptContext();
     if (!content.trim()) return;
 
+    // Remove any existing CHARACTER_STATE.md (e.g. stale physical file in workspace)
+    // so we never inject it twice.
+    const existingIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "CHARACTER_STATE.md");
+    if (existingIdx >= 0) ctx.bootstrapFiles.splice(existingIdx, 1);
+
     const soulIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "SOUL.md");
     const insertIdx = soulIdx >= 0 ? soulIdx + 1 : ctx.bootstrapFiles.length;
     ctx.bootstrapFiles.splice(insertIdx, 0, {
