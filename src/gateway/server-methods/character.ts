@@ -1417,4 +1417,207 @@ export const characterHandlers: GatewayRequestHandlers = {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
+
+  // ── Configuration (for new users) ──
+
+  "character.config.status": async ({ respond }) => {
+    try {
+      const providers = [];
+      
+      // Check environment variables
+      if (process.env.OPENROUTER_API_KEY) {
+        providers.push({ provider: "openrouter", model: process.env.OPENROUTER_MODEL ?? "auto" });
+      }
+      if (process.env.OPENAI_API_KEY) {
+        providers.push({ provider: "openai", model: process.env.OPENAI_MODEL ?? "gpt-4o-mini" });
+      }
+      if (process.env.ANTHROPIC_API_KEY) {
+        providers.push({ provider: "anthropic", model: process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-20241022" });
+      }
+      
+      // Check Ollama
+      try {
+        const res = await fetch("http://localhost:11434/api/tags", { 
+          method: "GET",
+          signal: AbortSignal.timeout(2000),
+        });
+        if (res.ok) providers.push({ provider: "ollama", model: "llama3.2" });
+      } catch {}
+      
+      if (providers.length === 0) {
+        (respond as Function)(true, { configured: false, needsSetup: true });
+      } else {
+        const primary = providers[0];
+        (respond as Function)(true, {
+          configured: true,
+          provider: primary.provider,
+          model: primary.model,
+          needsSetup: false,
+          providers,
+        });
+      }
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.config.wizard": ({ respond }) => {
+    (respond as Function)(true, {
+      providers: [
+        {
+          id: "openrouter",
+          name: "OpenRouter",
+          url: "https://openrouter.ai",
+          description: "支持多种模型，价格便宜，推荐新手使用",
+          recommended: true,
+          requiresApiKey: true,
+          models: ["auto", "anthropic/claude-3.5-sonnet", "openai/gpt-4o", "google/gemini-2.0-flash"],
+        },
+        {
+          id: "openai",
+          name: "OpenAI",
+          url: "https://platform.openai.com",
+          description: "ChatGPT 官方 API，质量稳定",
+          requiresApiKey: true,
+          models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+        },
+        {
+          id: "anthropic",
+          name: "Anthropic",
+          url: "https://console.anthropic.com",
+          description: "Claude 官方 API，擅长长文本和推理",
+          requiresApiKey: true,
+          models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+        },
+        {
+          id: "ollama",
+          name: "本地模型 (Ollama)",
+          url: "http://localhost:11434",
+          description: "完全本地运行，隐私安全",
+          requiresApiKey: false,
+          models: ["llama3.2", "qwen2.5", "deepseek-r1"],
+        },
+      ],
+      recommended: "openrouter",
+      helpUrl: "https://docs.openclaw.ai/docs/configuration",
+    });
+  },
+
+  "character.config.test": async ({ params, respond }) => {
+    const provider = params?.provider as string;
+    const apiKey = params?.apiKey as string | undefined;
+    const model = params?.model as string | undefined;
+    
+    if (!provider) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'provider' param"));
+      return;
+    }
+    
+    try {
+      // Simple validation
+      if (provider === "openrouter" && apiKey && !apiKey.startsWith("sk-or-")) {
+        (respond as Function)(true, { success: false, error: "API Key 格式错误（应以 sk-or- 开头）" });
+        return;
+      }
+      if (provider === "openai" && apiKey && !apiKey.startsWith("sk-")) {
+        (respond as Function)(true, { success: false, error: "API Key 格式错误（应以 sk- 开头）" });
+        return;
+      }
+      
+      // Test connection
+      let endpoint: string;
+      let headers: Record<string, string> = {};
+      let body: any;
+      
+      switch (provider) {
+        case "openrouter":
+          endpoint = "https://openrouter.ai/api/v1/chat/completions";
+          headers = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+          body = { model: model ?? "openai/gpt-4o-mini", messages: [{ role: "user", content: "Hi" }], max_tokens: 1 };
+          break;
+        case "openai":
+          endpoint = "https://api.openai.com/v1/chat/completions";
+          headers = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+          body = { model: model ?? "gpt-4o-mini", messages: [{ role: "user", content: "Hi" }], max_tokens: 1 };
+          break;
+        case "anthropic":
+          endpoint = "https://api.anthropic.com/v1/messages";
+          headers = { "x-api-key": apiKey ?? "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" };
+          body = { model: model ?? "claude-3-5-haiku-20241022", max_tokens: 1, messages: [{ role: "user", content: "Hi" }] };
+          break;
+        case "ollama":
+          endpoint = "http://localhost:11434/api/tags";
+          const ollamaRes = await fetch(endpoint, { method: "GET", signal: AbortSignal.timeout(5000) });
+          if (ollamaRes.ok) {
+            const tags = await ollamaRes.json();
+            const models = tags.models?.map((m: any) => m.name) ?? [];
+            (respond as Function)(true, { success: true, models });
+          } else {
+            (respond as Function)(true, { success: false, error: "Ollama 服务未运行" });
+          }
+          return;
+        default:
+          (respond as Function)(true, { success: false, error: "未知提供商" });
+          return;
+      }
+      
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
+      
+      if (response.ok) {
+        (respond as Function)(true, { success: true });
+      } else {
+        const error = await response.json();
+        (respond as Function)(true, { 
+          success: false, 
+          error: error.error?.message ?? `HTTP ${response.status}` 
+        });
+      }
+    } catch (err) {
+      (respond as Function)(true, { 
+        success: false, 
+        error: err instanceof Error ? err.message : "连接失败" 
+      });
+    }
+  },
+
+  "character.config.help": ({ params, respond }) => {
+    const provider = params?.provider as string;
+    
+    const helpSteps: Record<string, string[]> = {
+      openrouter: [
+        "1. 访问 https://openrouter.ai 并注册账号",
+        "2. 在 Settings → Keys 页面创建 API Key",
+        "3. 复制 API Key（以 sk-or- 开头）",
+        "4. 粘贴到配置页面",
+        "5. 选择默认模型（推荐 auto）",
+      ],
+      openai: [
+        "1. 访问 https://platform.openai.com 并登录",
+        "2. 在 API Keys 页面创建新的 Key",
+        "3. 复制 API Key（以 sk- 开头）",
+        "4. 粘贴到配置页面",
+      ],
+      anthropic: [
+        "1. 访问 https://console.anthropic.com 并登录",
+        "2. 在 API Keys 页面创建新的 Key",
+        "3. 复制 API Key",
+        "4. 粘贴到配置页面",
+      ],
+      ollama: [
+        "1. 安装 Ollama: https://ollama.ai",
+        "2. 运行 'ollama pull llama3.2' 下载模型",
+        "3. 确保 Ollama 服务在运行",
+      ],
+    };
+    
+    (respond as Function)(true, {
+      provider,
+      steps: helpSteps[provider] ?? ["请参考官方文档配置"],
+    });
+  },
 };
