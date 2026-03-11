@@ -61,22 +61,22 @@ async function classifyMessage(params: {
   try {
     const raw = await classifierLLMComplete(prompt);
     if (!raw) {
-      log.info({ message: "[smart-router] classify result: fallback→parallel (empty response — no classifier LLM configured?)" }, "smart-router");
-      return "parallel";
+      log.info({ message: "[smart-router] classify result: fallback→steer (empty response — no classifier LLM configured?)" }, "smart-router");
+      return "steer";
     }
     const match = raw.match(/\{[\s\S]*?\}/);
     if (!match) {
-      log.info({ message: `[smart-router] classify result: fallback→parallel (no JSON) raw="${raw.slice(0, 200)}"` }, "smart-router");
-      return "parallel";
+      log.info({ message: `[smart-router] classify result: fallback→steer (no JSON) raw="${raw.slice(0, 200)}"` }, "smart-router");
+      return "steer";
     }
     const parsed = JSON.parse(match[0]) as { route?: string };
-    const route = parsed.route === "steer" ? "steer" : "parallel";
+    const route = parsed.route === "parallel" ? "parallel" : "steer";
     log.info({ message: `[smart-router] classify result: ${route} | raw="${raw.slice(0, 200)}"` }, "smart-router");
     return route;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.info({ message: `[smart-router] classify result: fallback→parallel (error: ${msg})` }, "smart-router");
-    return "parallel";
+    log.info({ message: `[smart-router] classify result: fallback→steer (error: ${msg})` }, "smart-router");
+    return "steer";
   }
 }
 
@@ -127,8 +127,7 @@ export async function smartRouteOrEnqueue(params: {
 }): Promise<SmartRouteResult> {
   const { queueKey, followupRun, resolvedQueue } = params;
 
-  // Step 1: Classify (default to parallel when uncertain — parallel is always safer
-  // than steer, since steer silently queues messages that may never get processed)
+  // Step 1: Classify (default to steer when uncertain — safe serial queue fallback)
   let route: "steer" | "parallel";
   try {
     route = await classifyMessage({
@@ -136,8 +135,8 @@ export async function smartRouteOrEnqueue(params: {
       sessionFile: followupRun.run.sessionFile,
     });
   } catch {
-    // Classification failed — default to parallel (spawn sub-agent)
-    route = "parallel";
+    // Classification failed — default to steer (serial queue)
+    route = "steer";
   }
 
   // Step 2: Route

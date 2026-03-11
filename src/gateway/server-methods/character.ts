@@ -181,7 +181,7 @@ async function characterLLMComplete(prompt: string): Promise<string | null> {
 
 const CLASSIFIER_DEFAULTS = {
   baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  model: "qwen-plus",
+  model: "qwen3.5-plus",
 };
 
 function resolveClassifierLLMConfig(): { baseUrl: string; apiKey: string; model: string } | null {

@@ -5,13 +5,20 @@
 
 // AI Provider 预设（与 llm-service.js 保持一致）
 const PROVIDER_PRESETS = {
-  openai:   { label: 'OpenAI',        baseUrl: 'https://api.openai.com/v1',                           defaultModel: 'gpt-4o' },
-  bailian:  { label: '百炼 (Bailian)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',             defaultModel: 'glm-5' },
-  doubao:   { label: '豆包 (Doubao)',  baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',            defaultModel: 'doubao-1-5-pro-32k-250115' },
-  deepseek: { label: 'DeepSeek',      baseUrl: 'https://api.deepseek.com/v1',                         defaultModel: 'deepseek-chat' },
-  moonshot: { label: 'Moonshot',      baseUrl: 'https://api.moonshot.cn/v1',                          defaultModel: 'moonshot-v1-8k' },
-  qwen:     { label: '通义千问',       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',   defaultModel: 'qwen-plus' },
-  custom:   { label: '自定义',         baseUrl: '',                                                      defaultModel: '' },
+  openai:   { label: 'OpenAI',        baseUrl: 'https://api.openai.com/v1',                           defaultModel: 'gpt-4o',
+              models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'] },
+  bailian:  { label: '百炼 (Bailian)', baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',             defaultModel: 'glm-5',
+              models: ['glm-5', 'glm-4-plus', 'qwen-plus', 'qwen3.5-plus', 'qwen-turbo', 'qwen-max'] },
+  doubao:   { label: '豆包 (Doubao)',  baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',            defaultModel: 'doubao-1-5-pro-32k-250115',
+              models: ['doubao-1-5-pro-32k-250115', 'doubao-1-5-lite-32k-250115', 'doubao-pro-32k', 'doubao-lite-32k'] },
+  deepseek: { label: 'DeepSeek',      baseUrl: 'https://api.deepseek.com/v1',                         defaultModel: 'deepseek-chat',
+              models: ['deepseek-chat', 'deepseek-reasoner'] },
+  moonshot: { label: 'Moonshot',      baseUrl: 'https://api.moonshot.cn/v1',                          defaultModel: 'moonshot-v1-8k',
+              models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'] },
+  qwen:     { label: '通义千问',       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',   defaultModel: 'qwen3.5-plus',
+              models: ['qwen3.5-plus', 'qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-long'] },
+  custom:   { label: '自定义',         baseUrl: '',                                                      defaultModel: '',
+              models: [] },
 };
 
 export class SettingsPanel {
@@ -78,7 +85,7 @@ export class SettingsPanel {
         </div>
         <div class="settings-classifier-body" id="set-classifier-body" style="display:none">
           <div class="settings-hint" style="padding:2px 12px 6px;font-size:10px;color:#bbb">
-            配置调度用的轻量模型，留空则跟随主 AI。默认百炼 qwen-plus
+            配置调度用的轻量模型，留空则跟随主 AI。默认百炼 qwen3.5-plus
           </div>
           <div class="settings-group">
             <label>Provider</label>
@@ -103,7 +110,9 @@ export class SettingsPanel {
           </div>
           <div class="settings-group">
             <label>Model</label>
-            <input type="text" id="set-clf-model" placeholder="默认 qwen-plus" />
+            <select id="set-clf-model">
+              <option value="">-- 自动 --</option>
+            </select>
           </div>
         </div>
 
@@ -175,13 +184,15 @@ export class SettingsPanel {
       arrow.textContent = visible ? '▶' : '▼';
     });
 
-    // 分类器 Provider 切换时自动填充 URL 和 Model
+    // 分类器 Provider 切换时自动填充 URL 和 Model 下拉
     this.element.querySelector('#set-clf-provider').addEventListener('change', (e) => {
       const key = e.target.value;
       const preset = PROVIDER_PRESETS[key];
       if (preset) {
         document.getElementById('set-clf-base-url').value = preset.baseUrl;
-        document.getElementById('set-clf-model').value = preset.defaultModel;
+        this._populateClfModels(key, preset.defaultModel);
+      } else {
+        this._populateClfModels('', '');
       }
     });
 
@@ -238,9 +249,10 @@ export class SettingsPanel {
         document.getElementById('set-ai-api-key').placeholder = config.hasApiKey ? '已设置 (****)' : '输入 API Key';
 
         // 分类器字段
-        document.getElementById('set-clf-provider').value = config.classifierProvider || '';
+        const clfProvider = config.classifierProvider || '';
+        document.getElementById('set-clf-provider').value = clfProvider;
         document.getElementById('set-clf-base-url').value = config.classifierBaseUrl || '';
-        document.getElementById('set-clf-model').value = config.classifierModel || '';
+        this._populateClfModels(clfProvider, config.classifierModel || '');
         document.getElementById('set-clf-api-key').value = '';
         document.getElementById('set-clf-api-key').placeholder = config.hasClassifierApiKey ? '已设置 (****)' : '留空则跟随主 AI';
 
@@ -356,6 +368,22 @@ export class SettingsPanel {
     } catch (e) {
       statusEl.textContent = e.message;
       statusEl.style.color = '#f44336';
+    }
+  }
+
+  /** Populate classifier model <select> with models for the given provider */
+  _populateClfModels(providerKey, selectedModel) {
+    const sel = document.getElementById('set-clf-model');
+    sel.innerHTML = '<option value="">-- 自动 --</option>';
+    const preset = PROVIDER_PRESETS[providerKey];
+    if (preset?.models) {
+      for (const m of preset.models) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m === selectedModel) opt.selected = true;
+        sel.appendChild(opt);
+      }
     }
   }
 
