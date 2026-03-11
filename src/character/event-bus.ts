@@ -67,7 +67,7 @@ export type CharacterEventMap = {
   /** Adventure choice made */
   'adventure:choice': { adventure: { id: string }; choiceId: string };
   /** Adventure completed */
-  'adventure:completed': { adventure: { id: string }; result: { success: boolean; narrative: string } };
+  'adventure:completed': { adventure: { id: string; location: string }; result: { success: boolean; narrative: string; rewards: { exp: number; coins: number } } };
   /** Adventure cancelled */
   'adventure:cancelled': { adventure: { id: string } };
 };

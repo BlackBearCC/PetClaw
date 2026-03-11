@@ -1068,6 +1068,8 @@ class PetClawPet {
         this.charSync.handleServerPush(payload);
       } else if (payload?.kind === 'chat-eval') {
         this._handleChatEval(payload);
+      } else if (payload?.kind === 'adventure-completed') {
+        this._handleAdventureCompleted(payload);
       }
     });
 
@@ -1085,6 +1087,20 @@ class PetClawPet {
       this.bubble.show(hint, 6000);
       this.stateMachine.transition('idle_ear_twitch', { force: true, duration: 2000 }); // 侧耳倾听
     });
+  }
+
+  /**
+   * 探险结算：服务端 tick 完成后推送，显示结果气泡 + 动画
+   */
+  _handleAdventureCompleted({ success, location, rewards } = {}) {
+    if (success) {
+      this.stateMachine.transition('happy', { force: true, duration: 2000 });
+      const rewardText = rewards?.exp ? ` +${rewards.exp}EXP` : '';
+      this.bubble.show(`${location}探险成功！${rewardText}`, 4000);
+    } else {
+      this.stateMachine.transition('sad', { force: true, duration: 1500 });
+      this.bubble.show(`${location}探险失败了...`, 3000);
+    }
   }
 
   /**

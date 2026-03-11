@@ -2935,6 +2935,252 @@ body.panels-right .md-panel {
   box-shadow: 0 2px 6px rgba(200, 144, 32, 0.4);
 }
 
+/* ===== 探险面板 ===== */
+
+.nur-adv-active {
+  padding: 10px;
+}
+
+.nur-adv-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.nur-adv-icon {
+  font-size: 32px;
+}
+
+.nur-adv-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.nur-adv-info {
+  background: white;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.nur-adv-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.nur-adv-label {
+  color: var(--ink-light);
+  font-size: 12px;
+}
+
+.nur-adv-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.nur-adv-timer {
+  font-variant-numeric: tabular-nums;
+  color: var(--clr-primary);
+}
+
+.nur-adv-story {
+  background: rgba(0,0,0,0.03);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--ink);
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+.nur-adv-choices {
+  margin-bottom: 12px;
+}
+
+.nur-adv-choices-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.nur-adv-choice {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: white;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.nur-adv-choice:hover {
+  background: var(--clr-primary-light);
+}
+
+.nur-adv-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.nur-adv-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.nur-adv-cancel {
+  background: #fee;
+  color: #c0392b;
+}
+
+.nur-adv-cancel:hover {
+  background: #fdd;
+}
+
+/* 探险开始界面 */
+
+.nur-adv-start {
+  padding: 10px;
+}
+
+.nur-adv-stats {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(62, 201, 139, 0.1);
+  border-radius: 8px;
+}
+
+.nur-adv-stat {
+  text-align: center;
+}
+
+.nur-adv-stat-val {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.nur-adv-stat-label {
+  font-size: 10px;
+  color: var(--ink-light);
+}
+
+.nur-adv-form {
+  background: white;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.nur-adv-form-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.nur-adv-form-row label {
+  width: 80px;
+  font-size: 12px;
+  color: var(--ink-light);
+}
+
+.nur-adv-form-row select,
+.nur-adv-form-row input {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
+  background: white;
+  font-family: inherit;
+}
+
+.nur-adv-start-btn {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--clr-primary);
+  color: white;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.nur-adv-start-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* 探险历史 */
+
+.nur-adv-history {
+  background: white;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.nur-adv-history-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.nur-adv-history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  background: rgba(0,0,0,0.03);
+  border-radius: 4px;
+}
+
+.nur-adv-history-item.success {
+  border-left: 3px solid #4ade80;
+}
+
+.nur-adv-history-item.fail {
+  border-left: 3px solid #ef4444;
+}
+
+.nur-adv-hist-loc {
+  color: var(--ink);
+}
+
+.nur-adv-hist-result {
+  font-weight: 700;
+}
+
+.nur-adv-history-item.success .nur-adv-hist-result {
+  color: #4ade80;
+}
+
+.nur-adv-history-item.fail .nur-adv-hist-result {
+  color: #ef4444;
+}
+
 .nur-shop-buy:active {
   transform: scale(0.97);
 }

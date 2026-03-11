@@ -92,6 +92,7 @@ export class NurturingPanel {
         <button class="nur-tab active" data-tab="inventory">🎒 背包</button>
         <button class="nur-tab" data-tab="tasks">📋 任务</button>
         <button class="nur-tab" data-tab="care">💗 养护</button>
+        <button class="nur-tab" data-tab="adventure">🗺️ 探险</button>
         <button class="nur-tab" data-tab="shop">🪙 商城</button>
       </div>
       <div class="nur-body">
@@ -156,6 +157,7 @@ export class NurturingPanel {
       if (this._activeTab === 'inventory') await this._renderInventory(body);
       else if (this._activeTab === 'tasks') await this._renderTasks(body);
       else if (this._activeTab === 'care') await this._renderCare(body);
+      else if (this._activeTab === 'adventure') await this._renderAdventure(body);
       else if (this._activeTab === 'shop') await this._renderShop(body);
     } catch (err) {
       console.error('[nurturing] render error:', err);
@@ -548,6 +550,204 @@ export class NurturingPanel {
       parts.push(`本周 ${item.weekBought}/${item.weeklyLimit}`);
     }
     return parts.join(' · ') || '不限购';
+  }
+
+  // ───────────────── Adventure ─────────────────
+
+  async _renderAdventure(body) {
+    body.innerHTML = '<div class="nur-loading">加载中...</div>';
+    try {
+      const [activeData, historyData] = await Promise.all([
+        this._rpc('character.adventure.active'),
+        this._rpc('character.adventure.history'),
+      ]);
+
+      const active = activeData?.adventure;
+      const stats = activeData?.stats || {};
+      const history = historyData?.history || [];
+
+      if (active) {
+        // 有进行中的探险
+        await this._renderActiveAdventure(body, active);
+      } else {
+        // 没有探险，显示开始界面
+        await this._renderAdventureStart(body, stats, history);
+      }
+    } catch (err) {
+      console.error('[nurturing] adventure error:', err);
+      body.innerHTML = `<div class="nur-empty">探险加载失败<br><small>${this._esc(String(err?.message || err))}</small></div>`;
+    }
+  }
+
+  async _renderActiveAdventure(body, adventure) {
+    const elapsed = Math.floor((Date.now() - (adventure.startedAt || adventure.createdAt)) / 1000);
+    const remaining = Math.max(0, adventure.duration * 60 - elapsed);
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+
+    const riskLabels = { safe: '安全', moderate: '中等', dangerous: '危险' };
+    const riskColors = { safe: '#4ade80', moderate: '#fbbf24', dangerous: '#ef4444' };
+
+    let choicesHtml = '';
+    if (adventure.type === 'interactive' && adventure.choices?.length) {
+      choicesHtml = `
+        <div class="nur-adv-choices">
+          <div class="nur-adv-choices-title">做出选择：</div>
+          ${adventure.choices.map((c, i) => `
+            <button class="nur-adv-choice" data-choice-id="${c.id}">${this._esc(c.text)}</button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    body.innerHTML = `
+      <div class="nur-adv-active">
+        <div class="nur-adv-header">
+          <span class="nur-adv-icon">🗺️</span>
+          <div class="nur-adv-title">${this._esc(adventure.location || '未知地点')}</div>
+        </div>
+        <div class="nur-adv-info">
+          <div class="nur-adv-row">
+            <span class="nur-adv-label">类型</span>
+            <span class="nur-adv-value">${adventure.type === 'idle' ? '闲置' : adventure.type === 'interactive' ? '交互' : '探索'}</span>
+          </div>
+          <div class="nur-adv-row">
+            <span class="nur-adv-label">风险</span>
+            <span class="nur-adv-value" style="color: ${riskColors[adventure.risk] || '#fff'}">${riskLabels[adventure.risk] || adventure.risk}</span>
+          </div>
+          <div class="nur-adv-row">
+            <span class="nur-adv-label">剩余时间</span>
+            <span class="nur-adv-value nur-adv-timer">${mins}:${secs.toString().padStart(2, '0')}</span>
+          </div>
+        </div>
+        ${adventure.story ? `<div class="nur-adv-story">${this._esc(adventure.story)}</div>` : ''}
+        ${choicesHtml}
+        <div class="nur-adv-actions">
+          <button class="nur-adv-btn nur-adv-cancel" data-id="${adventure.id}">取消探险</button>
+        </div>
+      </div>
+    `;
+
+    // 绑定选择按钮
+    body.querySelectorAll('.nur-adv-choice').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          const result = await this._rpc('character.adventure.choice', {
+            adventureId: adventure.id,
+            choiceId: btn.dataset.choiceId,
+          });
+          if (result?.ok) {
+            this._onBubble('做出选择了！');
+            await this._refresh();
+          }
+        } catch (err) {
+          this._onBubble('选择失败...');
+        }
+      };
+    });
+
+    // 绑定取消按钮
+    body.querySelector('.nur-adv-cancel').onclick = async () => {
+      try {
+        await this._rpc('character.adventure.cancel', { adventureId: adventure.id });
+        this._onBubble('取消了探险...');
+        await this._refresh();
+      } catch (err) {
+        this._onBubble('取消失败...');
+      }
+    };
+
+    // 自动刷新倒计时；归零后延迟 1.5s 等服务端 tick 完成再刷
+    setTimeout(() => {
+      if (this._activeTab === 'adventure' && this.isOpen) {
+        this._refresh();
+      }
+    }, remaining > 0 ? 1000 : 1500);
+  }
+
+  async _renderAdventureStart(body, stats, history) {
+    const successRate = stats.completed > 0 ? Math.round(stats.successRate * 100) : 0;
+
+    body.innerHTML = `
+      <div class="nur-adv-start">
+        <div class="nur-adv-stats">
+          <div class="nur-adv-stat">
+            <span class="nur-adv-stat-val">${stats.total || 0}</span>
+            <span class="nur-adv-stat-label">总探险</span>
+          </div>
+          <div class="nur-adv-stat">
+            <span class="nur-adv-stat-val">${successRate}%</span>
+            <span class="nur-adv-stat-label">成功率</span>
+          </div>
+        </div>
+
+        <div class="nur-adv-form">
+          <div class="nur-adv-form-row">
+            <label>类型</label>
+            <select class="nur-adv-type">
+              <option value="idle">闲置探险</option>
+              <option value="explore">主动探索</option>
+              <option value="interactive">交互探险</option>
+            </select>
+          </div>
+          <div class="nur-adv-form-row">
+            <label>地点</label>
+            <input type="text" class="nur-adv-location" placeholder="输入探险地点..." value="神秘森林">
+          </div>
+          <div class="nur-adv-form-row">
+            <label>时长(分钟)</label>
+            <input type="number" class="nur-adv-duration" min="1" max="60" value="5">
+          </div>
+          <div class="nur-adv-form-row">
+            <label>风险</label>
+            <select class="nur-adv-risk">
+              <option value="safe">安全 (90% 成功)</option>
+              <option value="moderate">中等 (70% 成功)</option>
+              <option value="dangerous">危险 (50% 成功)</option>
+            </select>
+          </div>
+          <button class="nur-adv-start-btn">🚀 开始探险</button>
+        </div>
+
+        ${history.length > 0 ? `
+          <div class="nur-adv-history">
+            <div class="nur-adv-history-title">最近探险</div>
+            ${history.slice(0, 5).map(h => `
+              <div class="nur-adv-history-item ${h.result?.success ? 'success' : 'fail'}">
+                <span class="nur-adv-hist-loc">${this._esc(h.location)}</span>
+                <span class="nur-adv-hist-result">${h.result?.success ? '✓' : '✗'}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // 绑定开始按钮
+    body.querySelector('.nur-adv-start-btn').onclick = async () => {
+      const type = body.querySelector('.nur-adv-type').value;
+      const location = body.querySelector('.nur-adv-location').value || '未知地点';
+      const duration = parseInt(body.querySelector('.nur-adv-duration').value) || 5;
+      const risk = body.querySelector('.nur-adv-risk').value;
+
+      try {
+        const result = await this._rpc('character.adventure.start', {
+          type,
+          location,
+          duration,
+          risk,
+        });
+
+        if (result?.ok) {
+          this._onBubble(`出发去${location}探险啦！`);
+          await this._refresh();
+        } else if (result?.error) {
+          this._onBubble(result.error);
+        }
+      } catch (err) {
+        this._onBubble('出发失败...');
+      }
+    };
   }
 
   // ───────────────── Util ─────────────────

@@ -491,6 +491,33 @@ function getEngine(): CharacterEngine {
       }
     });
 
+    // Wire up daily task LLM callback for generating task names/descriptions
+    engine.dailyTasks.setLLMCallback(async (conditions) => {
+      const prompt = `你是桌面宠物养成系统的任务生成器。根据以下任务条件，为每个任务生成趣味化的名称和简短描述。
+
+任务条件：
+${conditions.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+返回严格JSON数组（无代码块标记，无其他文字）：
+[{"name":"任务名称，4到8字，趣味化","desc":"任务描述，10到20字，拟人化口吻"}]
+
+每个元素对应上面列出的任务条件顺序。`;
+
+      const raw = await characterLLMComplete(prompt);
+      if (!raw) return [];
+      try {
+        const match = raw.match(/\[[\s\S]*\]/);
+        if (!match) return [];
+        const parsed = JSON.parse(match[0]) as Array<{ name?: string; desc?: string }>;
+        return parsed.map(p => ({
+          name: p.name ?? "任务",
+          desc: p.desc ?? "完成这个任务",
+        }));
+      } catch {
+        return [];
+      }
+    });
+
     // Register cron jobs for World Agent + Soul Agent (once per process lifetime)
     if (_cron && !cronJobsRegistered) {
       cronJobsRegistered = true;
@@ -546,6 +573,18 @@ function getEngine(): CharacterEngine {
     engine.bus.on("chat:eval", (data) => {
       if (!_broadcast) return;
       _broadcast("character", { kind: "chat-eval", ...(data as object) }, { dropIfSlow: true });
+    });
+
+    // Broadcast adventure completion → client shows result bubble + animation
+    engine.bus.on("adventure:completed", (data) => {
+      if (!_broadcast) return;
+      _broadcast("character", {
+        kind: "adventure-completed",
+        success: data.result.success,
+        location: data.adventure.location,
+        narrative: data.result.narrative,
+        rewards: data.result.rewards,
+      }, { dropIfSlow: false });
     });
 
     // Event-driven Soul Agent: trigger on every chat interval (every 5 messages)
