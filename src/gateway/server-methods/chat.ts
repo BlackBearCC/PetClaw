@@ -10,6 +10,7 @@ import type { MsgContext } from "../../auto-reply/templating.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
+import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
@@ -1193,6 +1194,22 @@ export const chatHandlers: GatewayRequestHandlers = {
               sessionKey: rawSessionKey,
               message,
             });
+          }
+          // Webchat skips deliverOutboundPayloads, so message:sent hook
+          // never fires. Trigger it manually for character engine hooks
+          // (memory extraction, chat eval, first-time experience).
+          const replyText = finalReplyParts
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .join("\n\n")
+            .trim();
+          if (replyText && sessionKey) {
+            triggerInternalHook(
+              createInternalHookEvent("message", "sent", sessionKey, {
+                content: replyText,
+                success: true,
+              }),
+            ).catch(() => {});
           }
           setGatewayDedupeEntry({
             dedupe: context.dedupe,
