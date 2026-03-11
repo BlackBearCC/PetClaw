@@ -1,230 +1,471 @@
 # PetClaw — Steam SDK 集成设计文档
 
-## 一、架构概览
+> 基于实际代码结构设计。涉及文件路径均已对照 codebase 确认。
 
-Steam SDK 通过 [greenworks](https://github.com/nicedoc/greenworks)（Node.js 原生绑定）接入 Electron 主进程，
-客户端通过现有的单一 IPC 通道 `character-rpc` 扩展调用，**不新增 IPC 频道**。
+---
+
+## 一、架构
+
+### 数据流
 
 ```
-Renderer (app.js / AchievementSystem.js)
-  │  ipcRenderer.invoke('steam-rpc', method, params)
-  ▼
-Preload (preload.js)
+Renderer (app.js)
   │  window.electronAPI.steamRPC(method, params)
   ▼
-Main (steam-service.js)  ← 新增文件
-  │  greenworks.* API
+Preload (preload.js)                         ← 新增 steamRPC 暴露
+  │  ipcRenderer.invoke('steam-rpc', method, params)
   ▼
-Steam Client (本机)  ←─→  Steam Server
+Main (main.js)                               ← 新增 ipcMain.handle('steam-rpc', ...)
+  │  steamService.dispatch(method, params)
+  ▼
+electron/steam-service.js  ← 新增文件        ← greenworks 封装层
+  │  greenworks.*
+  ▼
+Steam Client（本机）
 ```
 
-### 新增文件
+### 新增/改动文件清单
 
-```
-apps/desktop-pet/electron/
-└── steam-service.js       # greenworks 封装，暴露 steamRPC dispatcher
-
-apps/desktop-pet/src/
-└── SteamBridge.js         # 渲染层封装，供 app.js / AchievementSystem.js 调用
-```
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `electron/steam-service.js` | 新增 | greenworks 封装，提供 `dispatch()` |
+| `src/SteamBridge.js` | 新增 | 渲染层单例，供 `app.js` 调用 |
+| `electron/preload.js` | 改动 | 暴露 `steamRPC` 方法 |
+| `electron/main.js` | 改动 | 注册 `steam-rpc` IPC handler，初始化 steam-service |
+| `src/app.js` | 改动 | 创建 SteamBridge，接入成就/Rich Presence/Stats 触发点 |
 
 ---
 
-## 二、成就系统（重点）
-
-### 2.1 服务端成就 → Steam 成就映射
-
-现有 12 个成就（`achievement-system.ts`）直接对应 Steam 成就 ID：
-
-| 内部 ID | Steam API Name | 中文名 | 条件 |
-|---------|---------------|--------|------|
-| `first_tool` | `ACH_FIRST_TOOL` | 初出茅庐 | 首次使用工具 |
-| `search_expert` | `ACH_SEARCH_EXPERT` | 搜索达人 | 搜索类工具累计 20 次 |
-| `code_craftsman` | `ACH_CODE_CRAFTSMAN` | 代码工匠 | 代码类工具累计 10 次 |
-| `terminal_master` | `ACH_TERMINAL_MASTER` | 终端大师 | 终端类工具累计 10 次 |
-| `all_rounder` | `ACH_ALL_ROUNDER` | 全能助手 | 解锁 10 种不同工具 |
-| `soul_bond` | `ACH_SOUL_BOND` | 心灵契合 | 亲密度达到第 3 阶段 |
-| `agent_commander` | `ACH_AGENT_COMMANDER` | 指挥官 | 同时拥有 3 只以上小分身 |
-| `night_owl` | `ACH_NIGHT_OWL` | 夜猫子 | 深夜(0-4点)使用工具 |
-| `file_analyst` | `ACH_FILE_ANALYST` | 文件侦探 | 拖放分析文件 5 次 |
-| `chat_buddy` | `ACH_CHAT_BUDDY` | 话痨伙伴 | 完成 20 次对话 |
-| `speed_runner` | `ACH_SPEED_RUNNER` | 神速执行 | 单会话工具 5 个以上 |
-| `web_surfer` | `ACH_WEB_SURFER` | 冲浪高手 | 搜索类工具累计 10 次 |
-
-### 2.2 扩展成就（PetClaw 特有，建议新增）
-
-| Steam API Name | 中文名 | 条件 | 说明 |
-|---------------|--------|------|------|
-| `ACH_FIRST_CHAT` | 破冰 | 首次完成一次对话 | 引导新用户 |
-| `ACH_MATURE_STAGE` | 成长记录 | 角色进入 mature 阶段 | 对应 GrowthSystem |
-| `ACH_VETERAN_STAGE` | 老友相伴 | 角色进入 veteran 阶段 | 最高成长阶段 |
-| `ACH_DOMAIN_MASTER` | 领域精通 | 任意领域 XP 达到 1000 | 7 个领域之一 |
-| `ACH_ALL_DOMAINS` | 全域探索 | 全部 7 个领域有记录 | 多样化使用 |
-| `ACH_ADVENTURE_COMPLETE` | 探险归来 | 完成首次探险 | AdventureSystem |
-| `ACH_LEARNING_FINISH` | 学有所成 | 完成首个学习课程 | LearningSystem |
-| `ACH_MEMORY_BUILDER` | 记忆编织者 | 记忆图谱达到 20 个簇 | MemoryGraphSystem |
-| `ACH_DAILY_STREAK_7` | 七日同行 | 连续签到 7 天 | LoginTracker |
-| `ACH_DAILY_STREAK_30` | 月月相伴 | 连续签到 30 天 | LoginTracker |
-| `ACH_FEED_100` | 美食家 | 累计喂食 100 次 | CareSystem |
-| `ACH_FULL_WARDROBE` | 全套装备 | 购买 10 件商店物品 | ShopSystem |
-
-**总计：24 个成就**（Steam 建议 20-30 个，数量合适）
-
-### 2.3 触发流程
-
-```
-服务端 AchievementSystem.check() 返回新解锁成就
-  │
-  ▼
-character.ts RPC handler → _broadcast("character", { kind: "achievement", id, name })
-  │
-  ▼
-app.js._handleAchievement(data)
-  │
-  ├── 播放解锁动画 + 气泡
-  └── SteamBridge.unlockAchievement(steamId)
-        │
-        ▼
-      steam-service.js → greenworks.activateAchievement(steamId, cb)
-```
-
-扩展成就的触发点：
-
-| 成就 | 触发位置 |
-|------|---------|
-| `ACH_MATURE_STAGE` / `ACH_VETERAN_STAGE` | `CharacterStateSync.onGrowthStageUp()` |
-| `ACH_DOMAIN_MASTER` / `ACH_ALL_DOMAINS` | `SkillPanel.js` 收到 skill 更新时检查 |
-| `ACH_ADVENTURE_COMPLETE` | 探险结算通知回调 |
-| `ACH_DAILY_STREAK_*` | 登录时 `CharacterStateSync` 同步 loginTracker 数据 |
-| `ACH_MEMORY_BUILDER` | `MemoryGraphPanel.js` 收到 clusters 更新时检查 |
-
----
-
-## 三、Rich Presence（正在干嘛）
-
-在 Steamworks 后台 **Rich Presence Localization** 配置 key，代码只写 key 名：
-
-### 状态设计
-
-| 场景 | `steam_display` key | 显示文本（中文） |
-|------|-------------------|----------------|
-| 应用刚启动/空闲 | `#Status_Idle` | 与 {char_name} 悠闲地待着 |
-| 用户在聊天中 | `#Status_Chatting` | 与 {char_name} 深入交谈中 |
-| AI 工具执行中 | `#Status_Working` | {char_name} 正在帮忙处理任务 |
-| 探险进行中 | `#Status_Adventure` | {char_name} 出发探险了 |
-| 学习课程中 | `#Status_Learning` | 和 {char_name} 一起学习中 |
-| 角色饥饿 | `#Status_Hungry` | {char_name} 饿了，快去喂食！ |
-| 角色心情低落 | `#Status_Sad` | {char_name} 心情不好，需要陪伴 |
-| 打开养成面板 | `#Status_Nurturing` | 查看 {char_name} 的成长记录 |
-
-`{char_name}` 通过 `character.name` Rich Presence key 动态传入角色名。
-
-### 代码示例
+## 二、steam-service.js 设计
 
 ```js
-// SteamBridge.js
-setRichPresence(status, extra = {}) {
-  window.electronAPI.steamRPC('setRichPresence', { status, ...extra });
+// electron/steam-service.js
+const path = require('path');
+const { app } = require('electron');
+
+class SteamService {
+  constructor() {
+    this._enabled = false;
+    this._gw = null; // greenworks 实例
+  }
+
+  init() {
+    try {
+      // greenworks 只能在主进程 require，不可在渲染进程使用
+      this._gw = require('greenworks');
+      if (!this._gw.initAPI()) {
+        console.warn('[steam] initAPI() returned false — Steam not running or no AppID');
+        return false;
+      }
+      this._enabled = true;
+      console.log('[steam] SDK initialized, AppID:', this._gw.getAppId());
+      return true;
+    } catch (e) {
+      // greenworks 不存在（开发环境未安装）或 Steam 未启动 → 静默降级
+      console.warn('[steam] SDK unavailable:', e.message);
+      return false;
+    }
+  }
+
+  dispatch(method, params = {}) {
+    if (!this._enabled) return { ok: false, reason: 'disabled' };
+    try {
+      switch (method) {
+        case 'activateAchievement':
+          return this._activateAchievement(params.id);
+        case 'setRichPresence':
+          return this._setRichPresence(params.key, params.value ?? '');
+        case 'setStatInt':
+          return this._setStatInt(params.name, params.value);
+        case 'storeStats':
+          return this._storeStats();
+        case 'isEnabled':
+          return { ok: true, enabled: this._enabled };
+        default:
+          return { ok: false, reason: `unknown method: ${method}` };
+      }
+    } catch (e) {
+      console.warn(`[steam] dispatch(${method}) error:`, e.message);
+      return { ok: false, reason: e.message };
+    }
+  }
+
+  _activateAchievement(id) {
+    this._gw.activateAchievement(id, () => {
+      console.log(`[steam] Achievement unlocked: ${id}`);
+    });
+    return { ok: true };
+  }
+
+  _setRichPresence(key, value) {
+    this._gw.setRichPresence(key, value);
+    return { ok: true };
+  }
+
+  _setStatInt(name, value) {
+    this._gw.setStatInt(name, value);
+    return { ok: true };
+  }
+
+  _storeStats() {
+    this._gw.storeStats(() => {});
+    return { ok: true };
+  }
+
+  shutdown() {
+    if (this._enabled && this._gw) {
+      try { this._gw.shutdown(); } catch {}
+      this._enabled = false;
+    }
+  }
 }
 
-// 触发点示例（app.js）
-// 聊天开始时
-this._steam.setRichPresence('#Status_Chatting');
+module.exports = { SteamService };
+```
 
-// 探险开始时
-this._steam.setRichPresence('#Status_Adventure');
+### main.js 改动
 
-// 饥饿时（CharacterStateSync.onAttributeChange 回调）
-if (attr === 'hunger' && value < 30) {
-  this._steam.setRichPresence('#Status_Hungry');
+```js
+// main.js — 在文件顶部 require 区
+const { SteamService } = require('./steam-service');
+
+// 在 app.whenReady() 内，createWindow() 之前
+const steamService = new SteamService();
+steamService.init(); // 失败静默降级，不影响启动
+
+// 注册 IPC handler（与 character-rpc 写法完全一致）
+ipcMain.handle('steam-rpc', async (event, method, params) => {
+  return steamService.dispatch(method, params);
+});
+
+// app.on('before-quit') 内补充：
+if (steamService) { steamService.shutdown(); }
+```
+
+### preload.js 改动
+
+在 `contextBridge.exposeInMainWorld('electronAPI', { ... })` 末尾追加一行：
+
+```js
+// === Steam SDK ===
+steamRPC: (method, params) => ipcRenderer.invoke('steam-rpc', method, params),
+```
+
+---
+
+## 三、SteamBridge.js 设计（渲染层）
+
+```js
+// src/SteamBridge.js
+// 渲染进程 Steam 封装。plain ES module，无 bundler。
+
+// 内部 ID → Steam API Name 映射
+const ACH_MAP = {
+  // 现有 12 个（对应 achievement-system.ts / AchievementSystem.js）
+  first_tool:       'ACH_FIRST_TOOL',
+  search_expert:    'ACH_SEARCH_EXPERT',
+  code_craftsman:   'ACH_CODE_CRAFTSMAN',
+  terminal_master:  'ACH_TERMINAL_MASTER',
+  all_rounder:      'ACH_ALL_ROUNDER',
+  soul_bond:        'ACH_SOUL_BOND',
+  agent_commander:  'ACH_AGENT_COMMANDER',
+  night_owl:        'ACH_NIGHT_OWL',
+  file_analyst:     'ACH_FILE_ANALYST',
+  chat_buddy:       'ACH_CHAT_BUDDY',
+  speed_runner:     'ACH_SPEED_RUNNER',
+  web_surfer:       'ACH_WEB_SURFER',
+  // 扩展 12 个（见第四章）
+  first_chat:         'ACH_FIRST_CHAT',
+  mature_stage:       'ACH_MATURE_STAGE',
+  veteran_stage:      'ACH_VETERAN_STAGE',
+  domain_master:      'ACH_DOMAIN_MASTER',
+  all_domains:        'ACH_ALL_DOMAINS',
+  adventure_complete: 'ACH_ADVENTURE_COMPLETE',
+  learning_finish:    'ACH_LEARNING_FINISH',
+  memory_builder:     'ACH_MEMORY_BUILDER',
+  daily_streak_7:     'ACH_DAILY_STREAK_7',
+  daily_streak_30:    'ACH_DAILY_STREAK_30',
+  feed_100:           'ACH_FEED_100',
+  full_wardrobe:      'ACH_FULL_WARDROBE',
+};
+
+export class SteamBridge {
+  constructor(electronAPI) {
+    this._api = electronAPI;
+    this._enabled = false;
+    this._statBuffer = {}; // 缓冲 stat，延迟 storeStats
+    this._storeTimer = null;
+  }
+
+  async init() {
+    const res = await this._api.steamRPC('isEnabled', {}).catch(() => null);
+    this._enabled = res?.enabled === true;
+    console.log('[steam-bridge] enabled:', this._enabled);
+  }
+
+  /** 解锁成就。传入内部 ID（如 'first_tool'）或 Steam API Name（如 'ACH_FIRST_TOOL'） */
+  unlockAchievement(id) {
+    if (!this._enabled) return;
+    const steamId = ACH_MAP[id] ?? id; // 未在 map 中则原样传入
+    this._api.steamRPC('activateAchievement', { id: steamId });
+  }
+
+  /** 设置 Rich Presence。key 为 Steamworks 后台配置的 key 名 */
+  setRichPresence(key, value = '') {
+    if (!this._enabled) return;
+    this._api.steamRPC('setRichPresence', { key, value });
+  }
+
+  /** 上报 int 型统计数据（自动批量 storeStats，5s 内去抖） */
+  reportStat(name, value) {
+    if (!this._enabled) return;
+    this._statBuffer[name] = value;
+    if (this._storeTimer) clearTimeout(this._storeTimer);
+    this._storeTimer = setTimeout(() => this._flushStats(), 5000);
+  }
+
+  _flushStats() {
+    for (const [name, value] of Object.entries(this._statBuffer)) {
+      this._api.steamRPC('setStatInt', { name, value });
+    }
+    this._statBuffer = {};
+    this._api.steamRPC('storeStats', {});
+    this._storeTimer = null;
+  }
 }
 ```
 
 ---
 
-## 四、Steam Cloud 存档同步
+## 四、成就系统
 
-### 同步文件列表
+### 4.1 现有 12 个成就的接入方式
 
-| 本地路径（相对 `~/.petclaw/store/character/`） | 说明 |
-|----------------------------------------------|------|
-| `mood.json` | 心情状态 |
-| `hunger.json` | 饥饿状态 |
-| `health.json` | 健康状态 |
-| `intimacy.json` | 亲密度 / 成长点数 |
-| `skill-system.json` | 领域数据、工具记录 |
-| `achievement-system.json` | 成就解锁记录 |
-| `learning-system.json` | 课程进度 |
-| `memory-graph.json` | 记忆图谱簇 |
+客户端 `AchievementSystem.js` 已有 `onUnlock(cb)` 回调（[src/character/AchievementSystem.js:83](../apps/desktop-pet/src/character/AchievementSystem.js#L83)）。
 
-**不同步**：`CHARACTER_STATE.md`（运行时生成），LLM API Key（敏感信息）
+在 `app.js` 现有的 `onUnlock` 注册块追加 Steam 调用：
 
-### 在 Steamworks 后台配置
-
-```
-Steam Cloud → Auto-Cloud 配置
-Root Path: {userdatapath}/{AppID}/remote/
-File: character/*.json
-Quota: 5 MB（足够）
+```js
+// app.js ≈ line 411（现有代码处追加最后一行）
+this.achievementSystem.onUnlock((ach) => {
+  this.bubble.show(`🏆 成就解锁：${ach.name}！${ach.icon}`, 4000);
+  this.stateMachine.transition('happy', { force: true, duration: 3000 });
+  if (ach.intimacyBonus > 0) this.charSync.interact('achievement', { intimacy: ach.intimacyBonus });
+  this._steam?.unlockAchievement(ach.id);   // ← 新增
+});
 ```
 
-### 冲突处理策略
+### 4.2 扩展 12 个成就
 
-优先使用**时间戳最新**的版本（Steam Cloud 默认策略），因为 PetClaw 数据是单设备累积型，不存在多端同时写入冲突。
+| Steam API Name | 中文名 | 触发位置 | 触发条件 |
+|---------------|--------|---------|---------|
+| `ACH_FIRST_CHAT` | 破冰 | `app.js` chat 完成块（≈ line 913） | `_chatCompletionCount === 1` |
+| `ACH_MATURE_STAGE` | 成长记录 | `charSync.onGrowthStageUp` 回调 | `stage >= 2`（intimate） |
+| `ACH_VETERAN_STAGE` | 老友相伴 | `charSync.onGrowthStageUp` 回调 | `stage >= 3`（bonded） |
+| `ACH_DOMAIN_MASTER` | 领域精通 | `skillSystem.onUnlock` 回调后 | 任意属性 XP ≥ 1000 |
+| `ACH_ALL_DOMAINS` | 全域探索 | `skillSystem.onUnlock` 回调后 | 全部 7 领域有记录 |
+| `ACH_ADVENTURE_COMPLETE` | 探险归来 | `_handleAdventureCompleted()`（≈ line 1095） | `success === true` 且首次 |
+| `ACH_LEARNING_FINISH` | 学有所成 | LearningSystem 课程完成回调 | 首次完成课程 |
+| `ACH_MEMORY_BUILDER` | 记忆编织者 | `MemoryGraphPanel` 数据刷新后 | clusters.length ≥ 20 |
+| `ACH_DAILY_STREAK_7` | 七日同行 | charSync 连接后查 loginTracker | streak ≥ 7 |
+| `ACH_DAILY_STREAK_30` | 月月相伴 | charSync 连接后查 loginTracker | streak ≥ 30 |
+| `ACH_FEED_100` | 美食家 | `charSync.interact('feed')` 完成后 | 累计喂食 ≥ 100 |
+| `ACH_FULL_WARDROBE` | 全套装备 | 商店购买成功回调 | 累计购买 ≥ 10 件 |
+
+**总计：24 个成就**（Steam 建议 20–30 个，合适）
+
+### 4.3 扩展成就的接入代码示例
+
+```js
+// app.js — charSync 初始化完成后注册
+
+// 成长阶段
+this.charSync.onGrowthStageUp((stage, stageName) => {
+  if (stage >= 2) this._steam?.unlockAchievement('mature_stage');
+  if (stage >= 3) this._steam?.unlockAchievement('veteran_stage');
+});
+
+// 探险成功（首次）
+// _handleAdventureCompleted() 内已有 success 判断，追加：
+if (success && !localStorage.getItem('ach-adventure-done')) {
+  localStorage.setItem('ach-adventure-done', '1');
+  this._steam?.unlockAchievement('adventure_complete');
+}
+
+// daily streak — charSync 连接后
+const loginInfo = await this._api.characterRPC('character.daily.tasks');
+const streak = loginInfo?.loginStreak ?? 0;
+if (streak >= 7)  this._steam?.unlockAchievement('daily_streak_7');
+if (streak >= 30) this._steam?.unlockAchievement('daily_streak_30');
+```
 
 ---
 
-## 五、Steam 统计数据（Stats）
+## 五、Rich Presence
 
-用于排行榜和长期数据追踪，在 Steamworks 后台定义：
+### Steamworks 后台配置（Rich Presence Localization）
 
-| Stat Name | 类型 | 说明 |
-|-----------|------|------|
-| `total_chat_count` | INT | 累计对话次数 |
-| `total_tool_uses` | INT | 累计工具使用次数 |
-| `intimacy_points` | INT | 当前亲密度总点数 |
-| `days_played` | INT | 累计游玩天数 |
-| `adventure_count` | INT | 探险次数 |
+```
+# 中文
+Status_Idle       = 与{#char_name}悠闲待着
+Status_Chatting   = 与{#char_name}深入交谈中
+Status_Working    = {#char_name}正在处理任务
+Status_Adventure  = {#char_name}出发探险了
+Status_Learning   = 和{#char_name}一起学习中
+Status_Hungry     = {#char_name}饿了，快去喂食！
+Status_Sad        = {#char_name}心情不好，需要陪伴
 
-Stats 在每次角色状态同步时（10s polling）一并上报，无需单独触发。
+# 英文（必须同时提供）
+Status_Idle       = Relaxing with {#char_name}
+Status_Chatting   = Deep in conversation with {#char_name}
+Status_Working    = {#char_name} is handling a task
+Status_Adventure  = {#char_name} is out exploring
+Status_Learning   = Studying with {#char_name}
+Status_Hungry     = {#char_name} is hungry!
+Status_Sad        = {#char_name} needs some company
+```
+
+`{#char_name}` 对应的 Rich Presence key 名为 `char_name`，由代码单独 set。
+
+### 触发点（app.js）
+
+```js
+// 初始化完成后
+this._steam?.setRichPresence('steam_display', '#Status_Idle');
+this._steam?.setRichPresence('char_name', '猫咪');  // 从 config 读角色名
+
+// 聊天开始（chatPanel.open 时）
+this._steam?.setRichPresence('steam_display', '#Status_Chatting');
+
+// 聊天结束
+this._steam?.setRichPresence('steam_display', '#Status_Idle');
+
+// 探险开始（NurturingPanel 发起探险后）
+this._steam?.setRichPresence('steam_display', '#Status_Adventure');
+
+// 饥饿（charSync.onAttributeChange 回调）
+this.charSync.onAttributeChange((key, level) => {
+  if (key === 'hunger' && level === 'starving') {
+    this._steam?.setRichPresence('steam_display', '#Status_Hungry');
+  }
+});
+```
 
 ---
 
-## 六、实现步骤
+## 六、Steam Stats（统计）
 
-### Phase 1 — SDK 基础接入（必做）
+Stats 是成就的数值基础，也用于排行榜（未来）。在 Steamworks 后台定义为 INT 类型。
 
-- [ ] `apps/desktop-pet` 安装 greenworks：`npm install greenworks`
-- [ ] 用 `electron-rebuild` 重新编译原生模块
-- [ ] 新建 `electron/steam-service.js`：初始化 greenworks，提供 `steamRPC` dispatcher
-- [ ] `preload.js` 暴露 `window.electronAPI.steamRPC`
-- [ ] `main.js` 注册 `ipcMain.handle('steam-rpc', ...)`
-- [ ] 新建 `src/SteamBridge.js`：渲染层封装，export `unlockAchievement / setRichPresence / setStat`
-- [ ] `app.js` 引入 SteamBridge，在 `_handleAchievement` 中调用
+| Stat Name | 说明 | 上报时机 |
+|-----------|------|---------|
+| `total_chat_count` | 累计对话次数 | chat 完成时 |
+| `total_tool_uses` | 累计工具使用次数 | agent 事件 `tool:use` 时 |
+| `intimacy_points` | 当前亲密度总点数 | 10s polling 后 |
+| `days_played` | 累计游玩天数 | charSync 连接后 |
+| `adventure_count` | 探险次数 | 探险完成时 |
 
-### Phase 2 — 成就完整覆盖
+```js
+// app.js — charSync polling 回调后
+this._steam?.reportStat('intimacy_points', this.charSync.getGrowthPoints());
 
-- [ ] Steamworks 后台录入全部 24 个成就（图标、描述、隐藏/公开）
-- [ ] 扩展成就触发逻辑（LoginTracker streak、GrowthSystem stage、MemoryGraph count）
-- [ ] 测试：用 AppID 480（Spacewar）验证 SDK 基础连通，再切换真实 AppID
+// chat 完成时
+this._steam?.reportStat('total_chat_count', this._chatCompletionCount);
+```
+
+`reportStat` 内部已做 5s 去抖，多次调用只触发一次 `storeStats`。
+
+---
+
+## 七、Steam Cloud 存档同步
+
+### 需要同步的文件
+
+`~/.petclaw/store/character/` 下的 JSON 文件：
+
+```
+mood.json, hunger.json, health.json, intimacy.json
+skill-system.json, achievement-system.json
+learning-system.json, memory-graph.json
+```
+
+### Steamworks 后台配置（Auto-Cloud）
+
+```
+Root Path:  {userdata}/{AppID}/remote/character/
+Files:      *.json
+OS:         Windows
+Quota:      5 MB
+```
+
+由于 `~/.petclaw/` 不在 Steam 默认路径内，需要在应用启动时将 character 状态目录**软链**到 Steam remote 路径，或在 `steam-service.js` 启动时做一次文件复制同步。
+
+**推荐方案**：维持原有存储路径不变，在 `SteamService.init()` 后读取 Steam remote 路径，比较 `updatedAt` 时间戳，选择较新的文件覆盖本地 — 仅在首次启动/换设备时执行一次。
+
+### 不同步的文件
+
+- `CHARACTER_STATE.md` — 运行时动态生成
+- `petclaw.json` — 包含 LLM API Key，**绝对不同步**
+- `identity/device.json` — 设备身份，不应在设备间共享
+
+---
+
+## 八、Steam Overlay
+
+greenworks 初始化成功后，Steam Overlay（Shift+Tab）自动可用，无需额外代码。
+
+但 Electron 透明窗口会导致 Overlay 渲染异常（透明区域黑屏）。解决方案：
+
+- 创建一个**不可见的普通 BrowserWindow**（`transparent: false`, `show: false`）专门用于承载 Overlay，不影响宠物窗口
+- 或在 `main.js` 中调用 `mainWindow.setContentProtection(false)` 并测试 Overlay 表现
+
+---
+
+## 九、实现步骤
+
+### Phase 1 — SDK 基础接入
+
+```bash
+cd apps/desktop-pet
+npm install greenworks
+npx electron-rebuild -f -w greenworks
+```
+
+- [ ] 新建 `electron/steam-service.js`（见第二章）
+- [ ] `electron/main.js` 引入 SteamService，注册 `steam-rpc` IPC
+- [ ] `electron/preload.js` 追加 `steamRPC` 暴露
+- [ ] 新建 `src/SteamBridge.js`（见第三章）
+- [ ] `src/app.js` 在构造函数加 `this._steam = null`，`init()` 阶段 `new SteamBridge(...).init()`
+
+测试：在 `apps/desktop-pet/` 根目录放 `steam_appid.txt`（内容为 AppID），启动后 Steam 显示"正在游玩"即成功。
+
+### Phase 2 — 成就系统完整覆盖
+
+- [ ] Steamworks 后台录入全部 24 个成就（API Name / 图标 / 描述 / 隐藏与否）
+- [ ] `app.js` 追加 `onUnlock` Steam 回调（第四章 4.1）
+- [ ] `app.js` 注册扩展成就触发逻辑（第四章 4.3）
+- [ ] 用测试账号验证全部成就触发（成就解锁后无法清除，必须用独立测试账号）
 
 ### Phase 3 — Rich Presence & Stats
 
 - [ ] Steamworks 后台配置 Rich Presence Localization（中英双语）
-- [ ] 各状态触发点接入 `SteamBridge.setRichPresence()`
-- [ ] Stats 上报接入 10s polling 回调
+- [ ] `app.js` 各触发点接入 `setRichPresence()`
+- [ ] Stats 上报接入
 
 ### Phase 4 — Steam Cloud
 
-- [ ] Steamworks 后台配置 Auto-Cloud 路径
-- [ ] 启动时检测云存档，提示用户是否同步
+- [ ] Steamworks 后台配置 Auto-Cloud
+- [ ] `steam-service.js` 启动时实现云存档同步逻辑
 
 ---
 
-## 七、关键注意事项
+## 十、注意事项
 
-1. **greenworks 需与 Electron 版本严格匹配**，升级 Electron 时必须重新 `electron-rebuild`
-2. **SDK 初始化失败要静默降级**：`if (!greenworks.initAPI()) return;`，不能影响非 Steam 启动
-3. **不要在渲染进程 require greenworks**，原生模块只能在主进程加载
-4. **成就一旦解锁无法撤销**（Steam 机制），测试时用独立的测试账号
-5. **LLM API Key 绝对不能进 Steam Cloud**，`~/.petclaw/` 下的配置文件要加排除规则
+| 问题 | 说明 |
+|------|------|
+| greenworks 编译绑定 | 与 Electron 版本强绑定，升级 Electron 必须 `electron-rebuild` |
+| SDK init 失败静默降级 | `init()` 返回 false → `_enabled = false` → 所有调用变 no-op |
+| 成就不可撤销 | Steam 成就解锁后无法重置，开发测试必须用单独 Steam 账号 |
+| 渲染进程禁止加载 greenworks | 原生模块只能在主进程 require，渲染进程通过 IPC 访问 |
+| API Key 绝不入 Steam Cloud | `petclaw.json` 必须在 Auto-Cloud 排除列表 |
+| 非 Steam 启动兼容 | 直接双击 exe 启动时 Steam Client 未运行，init 失败，功能静默关闭，不影响使用 |
