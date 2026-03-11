@@ -49,7 +49,7 @@ describe("runDaemonInstall integration", () => {
   beforeAll(async () => {
     envSnapshot = captureEnv([
       "HOME",
-      "OPENCLAW_STATE_DIR",
+      "PETCLAW_STATE_DIR",
       "OPENCLAW_CONFIG_PATH",
       "OPENCLAW_GATEWAY_TOKEN",
       "CLAWDBOT_GATEWAY_TOKEN",
@@ -59,7 +59,7 @@ describe("runDaemonInstall integration", () => {
     tempHome = await makeTempWorkspace("openclaw-daemon-install-int-");
     configPath = path.join(tempHome, "openclaw.json");
     process.env.HOME = tempHome;
-    process.env.OPENCLAW_STATE_DIR = tempHome;
+    process.env.PETCLAW_STATE_DIR = tempHome;
     process.env.OPENCLAW_CONFIG_PATH = configPath;
   });
 

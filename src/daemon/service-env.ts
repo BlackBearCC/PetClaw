@@ -301,7 +301,7 @@ function buildCommonServiceEnvironment(
     ...sharedEnv.proxyEnv,
     NODE_EXTRA_CA_CERTS: sharedEnv.nodeCaCerts,
     NODE_USE_SYSTEM_CA: sharedEnv.nodeUseSystemCa,
-    OPENCLAW_STATE_DIR: sharedEnv.stateDir,
+    PETCLAW_STATE_DIR: sharedEnv.stateDir,
     OPENCLAW_CONFIG_PATH: sharedEnv.configPath,
   };
   if (sharedEnv.minimalPath) {
@@ -314,7 +314,7 @@ function resolveSharedServiceEnvironmentFields(
   env: Record<string, string | undefined>,
   platform: NodeJS.Platform,
 ): SharedServiceEnvironmentFields {
-  const stateDir = env.OPENCLAW_STATE_DIR;
+  const stateDir = env.PETCLAW_STATE_DIR;
   const configPath = env.OPENCLAW_CONFIG_PATH;
   // Keep a usable temp directory for supervised services even when the host env omits TMPDIR.
   const tmpDir = env.TMPDIR?.trim() || os.tmpdir();

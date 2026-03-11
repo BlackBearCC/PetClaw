@@ -426,7 +426,7 @@ describe("resolveAgentConfig", () => {
     const home = path.join(path.sep, "srv", "openclaw-home");
     vi.stubEnv("OPENCLAW_HOME", home);
     // Clear state dir so it falls back to OPENCLAW_HOME
-    vi.stubEnv("OPENCLAW_STATE_DIR", "");
+    vi.stubEnv("PETCLAW_STATE_DIR", "");
 
     const agentDir = resolveAgentDir({} as OpenClawConfig, "main");
     expect(agentDir).toBe(path.join(path.resolve(home), ".openclaw", "agents", "main", "agent"));

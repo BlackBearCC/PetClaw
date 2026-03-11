@@ -26,7 +26,7 @@ describe("security fix", () => {
 
   const createFixEnv = (stateDir: string, configPath: string) => ({
     ...process.env,
-    OPENCLAW_STATE_DIR: stateDir,
+    PETCLAW_STATE_DIR: stateDir,
     OPENCLAW_CONFIG_PATH: configPath,
   });
 
@@ -241,7 +241,7 @@ describe("security fix", () => {
 
     const env = {
       ...process.env,
-      OPENCLAW_STATE_DIR: stateDir,
+      PETCLAW_STATE_DIR: stateDir,
       OPENCLAW_CONFIG_PATH: configPath,
     };
 

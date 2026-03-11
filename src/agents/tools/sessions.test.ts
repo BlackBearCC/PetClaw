@@ -124,7 +124,7 @@ async function withStubbedStateDir<T>(
   run: (stateDir: string) => Promise<T>,
 ): Promise<T> {
   const stateDir = path.join(os.tmpdir(), name);
-  vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+  vi.stubEnv("PETCLAW_STATE_DIR", stateDir);
   try {
     return await run(stateDir);
   } finally {

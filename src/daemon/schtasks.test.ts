@@ -122,11 +122,11 @@ describe("resolveTaskScriptPath", () => {
       expected: path.join("C:\\Users\\test", ".openclaw-jbphoenix", "gateway.cmd"),
     },
     {
-      name: "prefers OPENCLAW_STATE_DIR over profile-derived defaults",
+      name: "prefers PETCLAW_STATE_DIR over profile-derived defaults",
       env: {
         USERPROFILE: "C:\\Users\\test",
         OPENCLAW_PROFILE: "rescue",
-        OPENCLAW_STATE_DIR: "C:\\State\\openclaw",
+        PETCLAW_STATE_DIR: "C:\\State\\openclaw",
       },
       expected: path.join("C:\\State\\openclaw", "gateway.cmd"),
     },
@@ -273,10 +273,10 @@ describe("readScheduledTaskCommand", () => {
     );
   });
 
-  it("reads script from OPENCLAW_STATE_DIR override", async () => {
+  it("reads script from PETCLAW_STATE_DIR override", async () => {
     await withScheduledTaskScript(
       {
-        env: (tmpDir) => ({ OPENCLAW_STATE_DIR: path.join(tmpDir, "custom-state") }),
+        env: (tmpDir) => ({ PETCLAW_STATE_DIR: path.join(tmpDir, "custom-state") }),
         scriptLines: ["@echo off", "node gateway.js --from-state-dir"],
       },
       async (env) => {

@@ -299,9 +299,9 @@ describe("gateway hot reload", () => {
   }
 
   async function writeAuthProfileEnvRefStore() {
-    const stateDir = process.env.OPENCLAW_STATE_DIR;
+    const stateDir = process.env.PETCLAW_STATE_DIR;
     if (!stateDir) {
-      throw new Error("OPENCLAW_STATE_DIR is not set");
+      throw new Error("PETCLAW_STATE_DIR is not set");
     }
     const authStorePath = path.join(stateDir, "agents", "main", "agent", "auth-profiles.json");
     await fs.mkdir(path.dirname(authStorePath), { recursive: true });
@@ -329,7 +329,7 @@ describe("gateway hot reload", () => {
   }
 
   async function removeMainAuthProfileStore() {
-    const stateDir = process.env.OPENCLAW_STATE_DIR;
+    const stateDir = process.env.PETCLAW_STATE_DIR;
     if (!stateDir) {
       return;
     }

@@ -56,7 +56,7 @@ describe("gateway e2e", () => {
       const token = nextGatewayId("test-token");
       process.env.OPENCLAW_GATEWAY_TOKEN = token;
 
-      const workspaceDir = path.join(tempHome, "openclaw");
+      const workspaceDir = path.join(tempHome, "petclaw");
       await fs.mkdir(workspaceDir, { recursive: true });
 
       const nonceA = nextGatewayId("nonce-a");
@@ -131,7 +131,7 @@ describe("gateway e2e", () => {
     async () => {
       const envSnapshot = captureEnv([
         "HOME",
-        "OPENCLAW_STATE_DIR",
+        "PETCLAW_STATE_DIR",
         "OPENCLAW_CONFIG_PATH",
         "OPENCLAW_GATEWAY_TOKEN",
         "OPENCLAW_SKIP_CHANNELS",
@@ -150,7 +150,7 @@ describe("gateway e2e", () => {
 
       const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-wizard-home-"));
       process.env.HOME = tempHome;
-      delete process.env.OPENCLAW_STATE_DIR;
+      delete process.env.PETCLAW_STATE_DIR;
       delete process.env.OPENCLAW_CONFIG_PATH;
 
       const wizardToken = nextGatewayId("wiz-token");

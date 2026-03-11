@@ -33,7 +33,7 @@ describe("resolveProviderAuths key normalization", () => {
       "HOMEDRIVE",
       "HOMEPATH",
       "OPENCLAW_HOME",
-      "OPENCLAW_STATE_DIR",
+      "PETCLAW_STATE_DIR",
       ...Object.keys(env),
     ]);
     const snapshot: Record<string, string | undefined> = {};
@@ -44,7 +44,7 @@ describe("resolveProviderAuths key normalization", () => {
     process.env.HOME = base;
     process.env.USERPROFILE = base;
     delete process.env.OPENCLAW_HOME;
-    process.env.OPENCLAW_STATE_DIR = path.join(base, ".openclaw");
+    process.env.PETCLAW_STATE_DIR = path.join(base, ".openclaw");
     for (const [key, value] of Object.entries(env)) {
       if (value === undefined) {
         delete process.env[key];

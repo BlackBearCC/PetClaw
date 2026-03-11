@@ -43,8 +43,8 @@
         "filter": ["**/*"]
       },
       {
-        "from": "../../openclaw.mjs",
-        "to": "gateway/openclaw.mjs"
+        "from": "../../petclaw.mjs",
+        "to": "gateway/petclaw.mjs"
       },
       {
         "from": "../../docs/reference/templates",

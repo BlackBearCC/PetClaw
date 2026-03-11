@@ -37,7 +37,7 @@ async function withAuthSyncFixture(run: (fixture: AuthSyncFixture) => Promise<vo
 
     await withEnvAsync(
       {
-        OPENCLAW_STATE_DIR: stateDir,
+        PETCLAW_STATE_DIR: stateDir,
         OPENCLAW_AGENT_DIR: agentDir,
         PI_CODING_AGENT_DIR: agentDir,
         OPENCLAW_CONFIG_PATH: configPath,

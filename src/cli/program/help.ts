@@ -55,7 +55,7 @@ export function configureProgramHelp(program: Command, ctx: ProgramContext) {
     )
     .option(
       "--profile <name>",
-      "Use a named profile (isolates OPENCLAW_STATE_DIR/OPENCLAW_CONFIG_PATH under ~/.openclaw-<name>)",
+      "Use a named profile (isolates PETCLAW_STATE_DIR/OPENCLAW_CONFIG_PATH under ~/.openclaw-<name>)",
     )
     .option(
       "--log-level <level>",

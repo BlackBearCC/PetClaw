@@ -40,12 +40,12 @@ import { runCli } from "./run-main.js";
 
 describe("runCli profile env bootstrap", () => {
   const originalProfile = process.env.OPENCLAW_PROFILE;
-  const originalStateDir = process.env.OPENCLAW_STATE_DIR;
+  const originalStateDir = process.env.PETCLAW_STATE_DIR;
   const originalConfigPath = process.env.OPENCLAW_CONFIG_PATH;
 
   beforeEach(() => {
     delete process.env.OPENCLAW_PROFILE;
-    delete process.env.OPENCLAW_STATE_DIR;
+    delete process.env.PETCLAW_STATE_DIR;
     delete process.env.OPENCLAW_CONFIG_PATH;
     dotenvState.state.profileAtDotenvLoad = undefined;
     dotenvState.loadDotEnv.mockClear();
@@ -58,9 +58,9 @@ describe("runCli profile env bootstrap", () => {
       process.env.OPENCLAW_PROFILE = originalProfile;
     }
     if (originalStateDir === undefined) {
-      delete process.env.OPENCLAW_STATE_DIR;
+      delete process.env.PETCLAW_STATE_DIR;
     } else {
-      process.env.OPENCLAW_STATE_DIR = originalStateDir;
+      process.env.PETCLAW_STATE_DIR = originalStateDir;
     }
     if (originalConfigPath === undefined) {
       delete process.env.OPENCLAW_CONFIG_PATH;

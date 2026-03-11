@@ -46,7 +46,7 @@ async function getServerModule() {
 const GATEWAY_TEST_ENV_KEYS = [
   "HOME",
   "USERPROFILE",
-  "OPENCLAW_STATE_DIR",
+  "PETCLAW_STATE_DIR",
   "OPENCLAW_CONFIG_PATH",
   "OPENCLAW_SKIP_BROWSER_CONTROL_SERVER",
   "OPENCLAW_SKIP_GMAIL_WATCHER",
@@ -96,7 +96,7 @@ async function setupGatewayTestHome() {
   tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gateway-home-"));
   process.env.HOME = tempHome;
   process.env.USERPROFILE = tempHome;
-  process.env.OPENCLAW_STATE_DIR = path.join(tempHome, ".openclaw");
+  process.env.PETCLAW_STATE_DIR = path.join(tempHome, ".openclaw");
   delete process.env.OPENCLAW_CONFIG_PATH;
 }
 
@@ -480,7 +480,7 @@ function resolveDefaultTestDeviceIdentityPath(params: {
     `${params.clientId}-${params.clientMode}-${params.platform}-${params.deviceFamily ?? "none"}-${params.role}`
       .replace(/[^a-zA-Z0-9._-]+/g, "_")
       .toLowerCase();
-  const suiteRoot = process.env.OPENCLAW_STATE_DIR ?? process.env.HOME ?? os.tmpdir();
+  const suiteRoot = process.env.PETCLAW_STATE_DIR ?? process.env.HOME ?? os.tmpdir();
   return path.join(suiteRoot, "test-device-identities", `${safe}.json`);
 }
 

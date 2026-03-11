@@ -61,14 +61,14 @@ describe("applyCliProfileEnv", () => {
     });
     const expectedStateDir = path.join(path.resolve("/home/peter"), ".openclaw-dev");
     expect(env.OPENCLAW_PROFILE).toBe("dev");
-    expect(env.OPENCLAW_STATE_DIR).toBe(expectedStateDir);
+    expect(env.PETCLAW_STATE_DIR).toBe(expectedStateDir);
     expect(env.OPENCLAW_CONFIG_PATH).toBe(path.join(expectedStateDir, "openclaw.json"));
     expect(env.OPENCLAW_GATEWAY_PORT).toBe("19001");
   });
 
   it("does not override explicit env values", () => {
     const env: Record<string, string | undefined> = {
-      OPENCLAW_STATE_DIR: "/custom",
+      PETCLAW_STATE_DIR: "/custom",
       OPENCLAW_GATEWAY_PORT: "19099",
     };
     applyCliProfileEnv({
@@ -76,7 +76,7 @@ describe("applyCliProfileEnv", () => {
       env,
       homedir: () => "/home/peter",
     });
-    expect(env.OPENCLAW_STATE_DIR).toBe("/custom");
+    expect(env.PETCLAW_STATE_DIR).toBe("/custom");
     expect(env.OPENCLAW_GATEWAY_PORT).toBe("19099");
     expect(env.OPENCLAW_CONFIG_PATH).toBe(path.join("/custom", "openclaw.json"));
   });
@@ -93,7 +93,7 @@ describe("applyCliProfileEnv", () => {
     });
 
     const resolvedHome = path.resolve("/srv/openclaw-home");
-    expect(env.OPENCLAW_STATE_DIR).toBe(path.join(resolvedHome, ".openclaw-work"));
+    expect(env.PETCLAW_STATE_DIR).toBe(path.join(resolvedHome, ".openclaw-work"));
     expect(env.OPENCLAW_CONFIG_PATH).toBe(
       path.join(resolvedHome, ".openclaw-work", "openclaw.json"),
     );

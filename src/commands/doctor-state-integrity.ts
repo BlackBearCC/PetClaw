@@ -356,7 +356,7 @@ export function formatLinuxSdBackedStateDirWarning(
   return [
     `- State directory appears to be on SD/eMMC storage (${displayStateDir}; device ${safeSource}, fs ${safeFsType}, mount ${safeMountPoint}).`,
     "- SD/eMMC media can be slower for random I/O and wear faster under session/log churn.",
-    "- For better startup and state durability, prefer SSD/NVMe (or USB SSD on Raspberry Pi) for OPENCLAW_STATE_DIR.",
+    "- For better startup and state durability, prefer SSD/NVMe (or USB SSD on Raspberry Pi) for PETCLAW_STATE_DIR.",
   ].join("\n");
 }
 
@@ -499,7 +499,7 @@ export async function noteStateIntegrity(
         `- State directory is under macOS cloud-synced storage (${displayStateDir}; ${cloudSyncedStateDir.storage}).`,
         "- This can cause slow I/O and sync/lock races for sessions and credentials.",
         "- Prefer a local non-synced state dir (for example: ~/.openclaw).",
-        `  Set locally: OPENCLAW_STATE_DIR=~/.openclaw ${formatCliCommand("openclaw doctor")}`,
+        `  Set locally: PETCLAW_STATE_DIR=~/.openclaw ${formatCliCommand("openclaw doctor")}`,
       ].join("\n"),
     );
   }

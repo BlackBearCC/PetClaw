@@ -221,7 +221,7 @@ describe("gateway server models + voicewake", () => {
       await withTempHome(async (homeDir) => {
         const initial = await rpcReq<{ triggers: string[] }>(ws, "voicewake.get");
         expect(initial.ok).toBe(true);
-        expect(initial.payload?.triggers).toEqual(["openclaw", "claude", "computer"]);
+        expect(initial.payload?.triggers).toEqual(["petclaw", "claude", "computer"]);
 
         const changedP = onceMessage(
           ws,
@@ -276,7 +276,7 @@ describe("gateway server models + voicewake", () => {
       const first = (await firstEventP) as { event?: string; payload?: unknown };
       expect(first.event).toBe("voicewake.changed");
       expect((first.payload as { triggers?: unknown } | undefined)?.triggers).toEqual([
-        "openclaw",
+        "petclaw",
         "claude",
         "computer",
       ]);
@@ -286,14 +286,14 @@ describe("gateway server models + voicewake", () => {
         (o) => o.type === "event" && o.event === "voicewake.changed",
       );
       const setRes = await rpcReq<{ triggers: string[] }>(ws, "voicewake.set", {
-        triggers: ["openclaw", "computer"],
+        triggers: ["petclaw", "computer"],
       });
       expect(setRes.ok).toBe(true);
 
       const broadcast = (await broadcastP) as { event?: string; payload?: unknown };
       expect(broadcast.event).toBe("voicewake.changed");
       expect((broadcast.payload as { triggers?: unknown } | undefined)?.triggers).toEqual([
-        "openclaw",
+        "petclaw",
         "computer",
       ]);
 

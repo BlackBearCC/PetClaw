@@ -182,7 +182,7 @@ describe("security audit", () => {
     const credentialsDir = path.join(sharedChannelSecurityStateDir, "credentials");
     await fs.rm(credentialsDir, { recursive: true, force: true }).catch(() => undefined);
     await fs.mkdir(credentialsDir, { recursive: true, mode: 0o700 });
-    await withEnvAsync({ OPENCLAW_STATE_DIR: sharedChannelSecurityStateDir }, () =>
+    await withEnvAsync({ PETCLAW_STATE_DIR: sharedChannelSecurityStateDir }, () =>
       fn(sharedChannelSecurityStateDir),
     );
   };

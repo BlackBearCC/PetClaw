@@ -142,7 +142,7 @@ export async function spawnGatewayInstance(name: string): Promise<GatewayInstanc
           ...process.env,
           HOME: homeDir,
           OPENCLAW_CONFIG_PATH: configPath,
-          OPENCLAW_STATE_DIR: stateDir,
+          PETCLAW_STATE_DIR: stateDir,
           OPENCLAW_GATEWAY_TOKEN: "",
           OPENCLAW_GATEWAY_PASSWORD: "",
           OPENCLAW_SKIP_CHANNELS: "1",

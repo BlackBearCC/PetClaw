@@ -31,7 +31,7 @@ export function resolveUserPathWithHome(input: string, home?: string): string {
 }
 
 export function resolveGatewayStateDir(env: Record<string, string | undefined>): string {
-  const override = env.OPENCLAW_STATE_DIR?.trim();
+  const override = env.PETCLAW_STATE_DIR?.trim();
   if (override) {
     const home = override.startsWith("~") ? resolveHomeDir(env) : undefined;
     return resolveUserPathWithHome(override, home);

@@ -1110,7 +1110,7 @@ describe("loadOpenClawPlugins", () => {
     process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = bundledDir;
 
     const stateDir = makeTempDir();
-    withEnv({ OPENCLAW_STATE_DIR: stateDir, CLAWDBOT_STATE_DIR: undefined }, () => {
+    withEnv({ PETCLAW_STATE_DIR: stateDir, CLAWDBOT_STATE_DIR: undefined }, () => {
       const globalDir = path.join(stateDir, "extensions", "feishu");
       fs.mkdirSync(globalDir, { recursive: true });
       writePlugin({
@@ -1165,7 +1165,7 @@ describe("loadOpenClawPlugins", () => {
   it("warns when loaded non-bundled plugin has no install/load-path provenance", () => {
     useNoBundledPlugins();
     const stateDir = makeTempDir();
-    withEnv({ OPENCLAW_STATE_DIR: stateDir, CLAWDBOT_STATE_DIR: undefined }, () => {
+    withEnv({ PETCLAW_STATE_DIR: stateDir, CLAWDBOT_STATE_DIR: undefined }, () => {
       const globalDir = path.join(stateDir, "extensions", "rogue");
       fs.mkdirSync(globalDir, { recursive: true });
       writePlugin({

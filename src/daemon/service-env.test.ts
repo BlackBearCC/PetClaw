@@ -479,18 +479,18 @@ describe("resolveGatewayStateDir", () => {
     expect(resolveGatewayStateDir(env)).toBe(path.join("/Users/test", ".openclaw"));
   });
 
-  it("uses OPENCLAW_STATE_DIR when provided", () => {
-    const env = { HOME: "/Users/test", OPENCLAW_STATE_DIR: "/var/lib/openclaw" };
+  it("uses PETCLAW_STATE_DIR when provided", () => {
+    const env = { HOME: "/Users/test", PETCLAW_STATE_DIR: "/var/lib/openclaw" };
     expect(resolveGatewayStateDir(env)).toBe(path.resolve("/var/lib/openclaw"));
   });
 
-  it("expands ~ in OPENCLAW_STATE_DIR", () => {
-    const env = { HOME: "/Users/test", OPENCLAW_STATE_DIR: "~/openclaw-state" };
+  it("expands ~ in PETCLAW_STATE_DIR", () => {
+    const env = { HOME: "/Users/test", PETCLAW_STATE_DIR: "~/openclaw-state" };
     expect(resolveGatewayStateDir(env)).toBe(path.resolve("/Users/test/openclaw-state"));
   });
 
   it("preserves Windows absolute paths without HOME", () => {
-    const env = { OPENCLAW_STATE_DIR: "C:\\State\\openclaw" };
+    const env = { PETCLAW_STATE_DIR: "C:\\State\\openclaw" };
     expect(resolveGatewayStateDir(env)).toBe("C:\\State\\openclaw");
   });
 });

@@ -64,8 +64,8 @@ describe("update-startup", () => {
     vi.setSystemTime(new Date("2026-01-17T10:00:00Z"));
     tempDir = path.join(suiteRoot, `case-${++suiteCase}`);
     await fs.mkdir(tempDir);
-    envSnapshot = captureEnv(["OPENCLAW_STATE_DIR", "NODE_ENV", "VITEST"]);
-    process.env.OPENCLAW_STATE_DIR = tempDir;
+    envSnapshot = captureEnv(["PETCLAW_STATE_DIR", "NODE_ENV", "VITEST"]);
+    process.env.PETCLAW_STATE_DIR = tempDir;
 
     process.env.NODE_ENV = "test";
 

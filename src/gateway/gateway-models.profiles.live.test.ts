@@ -644,7 +644,7 @@ async function runGatewayModelSuite(params: GatewayModelSuiteParams) {
     skipCanvas: process.env.OPENCLAW_SKIP_CANVAS_HOST,
     agentDir: process.env.OPENCLAW_AGENT_DIR,
     piAgentDir: process.env.PI_CODING_AGENT_DIR,
-    stateDir: process.env.OPENCLAW_STATE_DIR,
+    stateDir: process.env.PETCLAW_STATE_DIR,
   };
   let tempAgentDir: string | undefined;
   let tempStateDir: string | undefined;
@@ -672,7 +672,7 @@ async function runGatewayModelSuite(params: GatewayModelSuiteParams) {
     usageStats: hostStore.usageStats ? { ...hostStore.usageStats } : undefined,
   };
   tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-live-state-"));
-  process.env.OPENCLAW_STATE_DIR = tempStateDir;
+  process.env.PETCLAW_STATE_DIR = tempStateDir;
   tempAgentDir = path.join(tempStateDir, "agents", DEFAULT_AGENT_ID, "agent");
   saveAuthProfileStore(sanitizedStore, tempAgentDir);
   const tempSessionAgentDir = path.join(tempStateDir, "agents", agentId, "agent");
@@ -1308,7 +1308,7 @@ async function runGatewayModelSuite(params: GatewayModelSuiteParams) {
     process.env.OPENCLAW_SKIP_CANVAS_HOST = previous.skipCanvas;
     process.env.OPENCLAW_AGENT_DIR = previous.agentDir;
     process.env.PI_CODING_AGENT_DIR = previous.piAgentDir;
-    process.env.OPENCLAW_STATE_DIR = previous.stateDir;
+    process.env.PETCLAW_STATE_DIR = previous.stateDir;
   }
 }
 

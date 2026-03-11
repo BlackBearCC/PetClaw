@@ -246,8 +246,8 @@ describe("memory index", () => {
       `${sourceChangeSessionLogLines}\n`,
     );
 
-    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const previousStateDir = process.env.PETCLAW_STATE_DIR;
+    process.env.PETCLAW_STATE_DIR = stateDir;
 
     const firstCfg = createCfg({
       storePath: indexSourceChangePath,
@@ -283,9 +283,9 @@ describe("memory index", () => {
       await secondManager.close?.();
     } finally {
       if (previousStateDir === undefined) {
-        delete process.env.OPENCLAW_STATE_DIR;
+        delete process.env.PETCLAW_STATE_DIR;
       } else {
-        process.env.OPENCLAW_STATE_DIR = previousStateDir;
+        process.env.PETCLAW_STATE_DIR = previousStateDir;
       }
       await fs.rm(stateDir, { recursive: true, force: true });
     }

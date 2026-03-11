@@ -12,10 +12,10 @@ import {
 } from "./paths.js";
 
 describe("oauth paths", () => {
-  it("prefers OPENCLAW_OAUTH_DIR over OPENCLAW_STATE_DIR", () => {
+  it("prefers OPENCLAW_OAUTH_DIR over PETCLAW_STATE_DIR", () => {
     const env = {
       OPENCLAW_OAUTH_DIR: "/custom/oauth",
-      OPENCLAW_STATE_DIR: "/custom/state",
+      PETCLAW_STATE_DIR: "/custom/state",
     } as NodeJS.ProcessEnv;
 
     expect(resolveOAuthDir(env, "/custom/state")).toBe(path.resolve("/custom/oauth"));
@@ -24,9 +24,9 @@ describe("oauth paths", () => {
     );
   });
 
-  it("derives oauth path from OPENCLAW_STATE_DIR when unset", () => {
+  it("derives oauth path from PETCLAW_STATE_DIR when unset", () => {
     const env = {
-      OPENCLAW_STATE_DIR: "/custom/state",
+      PETCLAW_STATE_DIR: "/custom/state",
     } as NodeJS.ProcessEnv;
 
     expect(resolveOAuthDir(env, "/custom/state")).toBe(path.join("/custom/state", "credentials"));
@@ -58,9 +58,9 @@ describe("state + config path candidates", () => {
     expect(candidates[0]).toBe(path.join(resolvedHome, ".openclaw", "openclaw.json"));
   }
 
-  it("uses OPENCLAW_STATE_DIR when set", () => {
+  it("uses PETCLAW_STATE_DIR when set", () => {
     const env = {
-      OPENCLAW_STATE_DIR: "/new/state",
+      PETCLAW_STATE_DIR: "/new/state",
     } as NodeJS.ProcessEnv;
 
     expect(resolveStateDir(env, () => "/home/test")).toBe(path.resolve("/new/state"));
@@ -144,7 +144,7 @@ describe("state + config path candidates", () => {
       await fs.writeFile(legacyConfig, "{}", "utf-8");
 
       const overrideDir = path.join(root, "override");
-      const env = { OPENCLAW_STATE_DIR: overrideDir } as NodeJS.ProcessEnv;
+      const env = { PETCLAW_STATE_DIR: overrideDir } as NodeJS.ProcessEnv;
       const resolved = resolveConfigPath(env, overrideDir, () => root);
       expect(resolved).toBe(path.join(overrideDir, "openclaw.json"));
     });

@@ -195,7 +195,7 @@ class LLMService {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
       cwd: gatewayCwd,
-      env: { ...process.env, OPENCLAW_STATE_DIR: path.join(os.homedir(), '.petclaw') },
+      env: { ...process.env, PETCLAW_STATE_DIR: path.join(os.homedir(), '.petclaw') },
       shell: gateway.shell,
     });
 
@@ -225,13 +225,13 @@ class LLMService {
 
   /**
    * 解析 Gateway 启动方式，返回 { cmd, args, shell }。
-   * 打包模式：用 node 直接跑 resources/gateway/openclaw.mjs（上游文件名保持不变）
+   * 打包模式：用 node 直接跑 resources/gateway/petclaw.mjs（上游文件名保持不变）
    * 开发模式：用 node_modules/.bin/ 下的 CLI shim
    */
   _resolveGateway() {
-    // 1. 打包后：resources/gateway/openclaw.mjs（extraResources 复制）
+    // 1. 打包后：resources/gateway/petclaw.mjs（extraResources 复制）
     if (app.isPackaged) {
-      const mjs = path.join(process.resourcesPath, 'gateway', 'openclaw.mjs');
+      const mjs = path.join(process.resourcesPath, 'gateway', 'petclaw.mjs');
       if (fs.existsSync(mjs)) {
         return { cmd: process.execPath, args: [mjs], shell: false };
       }
@@ -240,7 +240,7 @@ class LLMService {
     // 2. 开发模式：node_modules/.bin/ 下的 CLI shim
     const isWin = process.platform === 'win32';
     const ext = isWin ? '.cmd' : '';
-    const names = [`petclaw${ext}`, `openclaw${ext}`];
+    const names = [`petclaw${ext}`];
 
     for (const binName of names) {
       const localBin = path.join(app.getAppPath(), 'node_modules', '.bin', binName);
@@ -328,10 +328,10 @@ class LLMService {
             try { execSync(`taskkill /F /T /PID ${pid}`, { timeout: 5000 }); } catch {}
           }
         } catch {}
-        // 2. 兜底：杀所有 openclaw gateway 相关的孤儿 node 进程
+        // 2. 兜底：杀所有 petclaw gateway 相关的孤儿 node 进程
         try {
           const wmicOut = execSync('wmic process where "name=\'node.exe\'" get ProcessId,CommandLine /FORMAT:CSV', { encoding: 'utf-8', timeout: 5000 });
-          const lines = wmicOut.split('\n').filter(l => l.includes('openclaw') && l.includes('gateway'));
+          const lines = wmicOut.split('\n').filter(l => l.includes('petclaw') && l.includes('gateway'));
           for (const line of lines) {
             const match = line.match(/,(\d+)\s*$/);
             if (match) {
@@ -746,13 +746,13 @@ class LLMService {
     try {
       const headers = {
         'Content-Type': 'application/json',
-        'x-openclaw-agent-id': this.config.agentId, // gateway 要求此 header 名
+        'x-petclaw-agent-id': this.config.agentId,
       };
       if (this.gatewayToken) {
         headers['Authorization'] = `Bearer ${this.gatewayToken}`;
       }
       const body = JSON.stringify({
-        model: 'openclaw', // gateway 默认 model 名
+        model: 'petclaw',
         messages: [
           { role: 'system', content: this.config.systemPrompt },
           ...this.conversationHistory,
@@ -792,7 +792,7 @@ class LLMService {
     // Character 主场：确保 gateway token 由 character engine 控制
     this.gatewayToken = this._ensureCharacterToken();
 
-    // 每次启动都从 ~/.petclaw/openclaw.json 同步最新 primary model 配置
+    // 每次启动都从 ~/.petclaw/petclaw.json 同步最新 primary model 配置
     this._autoPopulateFromPetClaw();
 
     // SOUL.md 作为人设唯一来源 — 启动时同步到 systemPrompt
@@ -804,7 +804,7 @@ class LLMService {
   }
 
   /**
-   * 从 ~/.petclaw/openclaw.json 读取已有的 AI 配置，自动填充到本地配置
+   * 从 ~/.petclaw/petclaw.json 读取已有的 AI 配置，自动填充到本地配置
    */
   _autoPopulateFromPetClaw() {
     const ocConfig = this._readPetClawConfig();
@@ -921,7 +921,7 @@ class LLMService {
 
   _ensureCharacterToken() {
     const configDir = path.join(os.homedir(), '.petclaw');
-    const configFile = path.join(configDir, 'openclaw.json');
+    const configFile = path.join(configDir, 'petclaw.json');
     const tokenFile = path.join(configDir, 'character-token');
 
     // 读取或生成 character token（兼容旧 pet-token 文件）
@@ -946,7 +946,7 @@ class LLMService {
       } catch (e) { console.warn('[llm] Failed to save character token:', e.message); }
     }
 
-    // 写入 openclaw.json（上游配置文件名保持不变），Gateway 启动时读取
+    // 写入 petclaw.json（上游配置文件名保持不变），Gateway 启动时读取
     try {
       let config = {};
       if (fs.existsSync(configFile)) {
@@ -966,10 +966,10 @@ class LLMService {
     return charToken;
   }
 
-  // ===== PetClaw config file (~/.petclaw/openclaw.json) =====
+  // ===== PetClaw config file (~/.petclaw/petclaw.json) =====
 
   _readPetClawConfig() {
-    const configFile = path.join(os.homedir(), '.petclaw', 'openclaw.json');
+    const configFile = path.join(os.homedir(), '.petclaw', 'petclaw.json');
     try {
       if (fs.existsSync(configFile)) return JSON.parse(fs.readFileSync(configFile, 'utf-8'));
     } catch (e) {
@@ -980,7 +980,7 @@ class LLMService {
 
   writePetClawConfig(aiConfig) {
     const configDir = path.join(os.homedir(), '.petclaw');
-    const configFile = path.join(configDir, 'openclaw.json');
+    const configFile = path.join(configDir, 'petclaw.json');
 
     try {
       if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });

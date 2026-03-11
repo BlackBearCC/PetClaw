@@ -69,7 +69,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       throw new Error("temp home not initialized");
     }
     const stateDir = await fs.mkdtemp(path.join(tempHome, prefix));
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.PETCLAW_STATE_DIR = stateDir;
     delete process.env.OPENCLAW_CONFIG_PATH;
     return stateDir;
   };
@@ -87,7 +87,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
   beforeAll(async () => {
     envSnapshot = captureEnv([
       "HOME",
-      "OPENCLAW_STATE_DIR",
+      "PETCLAW_STATE_DIR",
       "OPENCLAW_CONFIG_PATH",
       "OPENCLAW_SKIP_CHANNELS",
       "OPENCLAW_SKIP_GMAIL_WATCHER",
@@ -308,7 +308,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       return;
     }
     await withStateDir("state-lan-", async (stateDir) => {
-      process.env.OPENCLAW_STATE_DIR = stateDir;
+      process.env.PETCLAW_STATE_DIR = stateDir;
       process.env.OPENCLAW_CONFIG_PATH = path.join(stateDir, "openclaw.json");
 
       const port = getPseudoPort(40_000);

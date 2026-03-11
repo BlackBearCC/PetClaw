@@ -19,7 +19,7 @@ describe("cli json stdout contract", () => {
           OPENCLAW_TEST_FAST: "1",
         };
         delete env.OPENCLAW_HOME;
-        delete env.OPENCLAW_STATE_DIR;
+        delete env.PETCLAW_STATE_DIR;
         delete env.OPENCLAW_CONFIG_PATH;
         delete env.VITEST;
 

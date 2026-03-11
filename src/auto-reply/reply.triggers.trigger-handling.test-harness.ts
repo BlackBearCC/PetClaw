@@ -124,7 +124,7 @@ function snapshotTempHomeEnv(): TempHomeEnvSnapshot {
     homeDrive: process.env.HOMEDRIVE,
     homePath: process.env.HOMEPATH,
     openclawHome: process.env.OPENCLAW_HOME,
-    stateDir: process.env.OPENCLAW_STATE_DIR,
+    stateDir: process.env.PETCLAW_STATE_DIR,
   };
 }
 
@@ -142,14 +142,14 @@ function restoreTempHomeEnv(snapshot: TempHomeEnvSnapshot): void {
   restoreKey("HOMEDRIVE", snapshot.homeDrive);
   restoreKey("HOMEPATH", snapshot.homePath);
   restoreKey("OPENCLAW_HOME", snapshot.openclawHome);
-  restoreKey("OPENCLAW_STATE_DIR", snapshot.stateDir);
+  restoreKey("PETCLAW_STATE_DIR", snapshot.stateDir);
 }
 
 function setTempHomeEnv(home: string): void {
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   delete process.env.OPENCLAW_HOME;
-  process.env.OPENCLAW_STATE_DIR = join(home, ".openclaw");
+  process.env.PETCLAW_STATE_DIR = join(home, ".openclaw");
 
   if (process.platform !== "win32") {
     return;

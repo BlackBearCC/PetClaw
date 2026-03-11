@@ -11,7 +11,7 @@ import {
 
 describe("volcengine/byteplus auth choice", () => {
   const lifecycle = createAuthTestLifecycle([
-    "OPENCLAW_STATE_DIR",
+    "PETCLAW_STATE_DIR",
     "OPENCLAW_AGENT_DIR",
     "PI_CODING_AGENT_DIR",
     "VOLCANO_ENGINE_API_KEY",

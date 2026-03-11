@@ -20,7 +20,7 @@ async function makeEnv() {
   await fs.mkdir(resolveGatewayLockDir(), { recursive: true });
   return {
     ...process.env,
-    OPENCLAW_STATE_DIR: dir,
+    PETCLAW_STATE_DIR: dir,
     OPENCLAW_CONFIG_PATH: configPath,
   };
 }

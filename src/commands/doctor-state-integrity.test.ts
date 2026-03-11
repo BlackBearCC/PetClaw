@@ -14,7 +14,7 @@ vi.mock("../terminal/note.js", () => ({
 type EnvSnapshot = {
   HOME?: string;
   OPENCLAW_HOME?: string;
-  OPENCLAW_STATE_DIR?: string;
+  PETCLAW_STATE_DIR?: string;
   OPENCLAW_OAUTH_DIR?: string;
 };
 
@@ -22,7 +22,7 @@ function captureEnv(): EnvSnapshot {
   return {
     HOME: process.env.HOME,
     OPENCLAW_HOME: process.env.OPENCLAW_HOME,
-    OPENCLAW_STATE_DIR: process.env.OPENCLAW_STATE_DIR,
+    PETCLAW_STATE_DIR: process.env.PETCLAW_STATE_DIR,
     OPENCLAW_OAUTH_DIR: process.env.OPENCLAW_OAUTH_DIR,
   };
 }
@@ -88,9 +88,9 @@ describe("doctor state integrity oauth dir checks", () => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-doctor-state-integrity-"));
     process.env.HOME = tempHome;
     process.env.OPENCLAW_HOME = tempHome;
-    process.env.OPENCLAW_STATE_DIR = path.join(tempHome, ".openclaw");
+    process.env.PETCLAW_STATE_DIR = path.join(tempHome, ".openclaw");
     delete process.env.OPENCLAW_OAUTH_DIR;
-    fs.mkdirSync(process.env.OPENCLAW_STATE_DIR, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(process.env.PETCLAW_STATE_DIR, { recursive: true, mode: 0o700 });
     vi.mocked(note).mockClear();
   });
 

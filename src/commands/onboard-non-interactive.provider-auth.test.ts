@@ -83,7 +83,7 @@ async function withOnboardEnv(
     await withEnvAsync(
       {
         HOME: tempHome,
-        OPENCLAW_STATE_DIR: tempHome,
+        PETCLAW_STATE_DIR: tempHome,
         OPENCLAW_CONFIG_PATH: configPath,
         OPENCLAW_SKIP_CHANNELS: "1",
         OPENCLAW_SKIP_GMAIL_WATCHER: "1",

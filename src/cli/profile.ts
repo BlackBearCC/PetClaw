@@ -112,9 +112,9 @@ export function applyCliProfileEnv(params: {
   // Convenience only: fill defaults, never override explicit env values.
   env.OPENCLAW_PROFILE = profile;
 
-  const stateDir = env.OPENCLAW_STATE_DIR?.trim() || resolveProfileStateDir(profile, env, homedir);
-  if (!env.OPENCLAW_STATE_DIR?.trim()) {
-    env.OPENCLAW_STATE_DIR = stateDir;
+  const stateDir = env.PETCLAW_STATE_DIR?.trim() || resolveProfileStateDir(profile, env, homedir);
+  if (!env.PETCLAW_STATE_DIR?.trim()) {
+    env.PETCLAW_STATE_DIR = stateDir;
   }
 
   if (!env.OPENCLAW_CONFIG_PATH?.trim()) {

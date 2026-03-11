@@ -29,7 +29,7 @@ function createMinimaxPrompter(
 
 describe("applyAuthChoiceMiniMax", () => {
   const lifecycle = createAuthTestLifecycle([
-    "OPENCLAW_STATE_DIR",
+    "PETCLAW_STATE_DIR",
     "OPENCLAW_AGENT_DIR",
     "PI_CODING_AGENT_DIR",
     "MINIMAX_API_KEY",

@@ -58,7 +58,7 @@ async function createAuditFixture(): Promise<AuditFixture> {
     modelsPath,
     envPath,
     env: {
-      OPENCLAW_STATE_DIR: stateDir,
+      PETCLAW_STATE_DIR: stateDir,
       OPENCLAW_CONFIG_PATH: configPath,
       OPENAI_API_KEY: "env-openai-key", // pragma: allowlist secret
       PATH: resolveRuntimePathEnv(),
