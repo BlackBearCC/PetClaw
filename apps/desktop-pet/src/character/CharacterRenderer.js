@@ -232,7 +232,7 @@ export class CharacterRenderer {
    */
   _playCompoundEnter(compound) {
     const sheet = this._getSheetForAnimation(compound.enter);
-    const anim = sheet.getAnimation(compound.enter);
+    const anim = sheet?.getAnimation(compound.enter);
     if (!anim) {
       this.currentAnimation = compound.loop;
       this.currentFrame = 0;
@@ -278,7 +278,7 @@ export class CharacterRenderer {
    */
   _playCompoundExit(compound, targetAnimation) {
     const sheet = this._getSheetForAnimation(compound.exit);
-    const anim = sheet.getAnimation(compound.exit);
+    const anim = sheet?.getAnimation(compound.exit);
     if (!anim) {
       this.currentAnimation = targetAnimation;
       this.currentFrame = 0;

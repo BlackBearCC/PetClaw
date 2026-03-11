@@ -556,7 +556,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       }
     }
 
-    const wantsDelivery = request.deliver === true;
+    let wantsDelivery = request.deliver === true;
     const explicitTo =
       typeof request.replyTo === "string" && request.replyTo.trim()
         ? request.replyTo.trim()
@@ -608,9 +608,9 @@ export const agentHandlers: GatewayRequestHandlers = {
           deliveryTargetMode,
           resolvedAccountId,
         };
-      } catch (err) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
-        return;
+      } catch {
+        // Webchat can't resolve an external channel — proceed without delivery
+        wantsDelivery = false;
       }
     }
 
