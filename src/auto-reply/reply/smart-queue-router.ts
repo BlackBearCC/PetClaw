@@ -100,7 +100,7 @@ async function spawnParallelSubagent(params: {
           followupRun.originatingThreadId != null
             ? String(followupRun.originatingThreadId)
             : undefined,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: followupRun.run.clientRunId ?? crypto.randomUUID(),
         deliver: true,
         lane: AGENT_LANE_SUBAGENT,
         extraSystemPrompt: contextSnapshot,

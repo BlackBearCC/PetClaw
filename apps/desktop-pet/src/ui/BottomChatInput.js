@@ -129,14 +129,9 @@ export class BottomChatInput {
     this.electronAPI.onChatStream((payload) => {
       if (!payload || !payload.runId) return;
 
-      // 查找匹配的活跃流（fallback 到最近的活跃流，处理 smart-queue 二次 run）
-      let streamKey = payload.runId;
-      let stream = this._activeStreams.get(streamKey);
-      if (!stream) {
-        if (this._activeStreams.size === 0) return;
-        const entries = [...this._activeStreams.entries()];
-        [streamKey, stream] = entries[entries.length - 1];
-      }
+      const streamKey = payload.runId;
+      const stream = this._activeStreams.get(streamKey);
+      if (!stream) return;
 
       if (payload.state === 'delta') {
         const text = this._extractText(payload.message);

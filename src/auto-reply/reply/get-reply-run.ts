@@ -543,6 +543,11 @@ export async function runPreparedReply(
       inputProvenance: ctx.InputProvenance ?? sessionCtx.InputProvenance,
       extraSystemPrompt: extraSystemPromptParts.join("\n\n") || undefined,
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
+      // Preserve the webchat client's runId so smart-queue sub-agents can reuse it,
+      // allowing the client to route sub-agent stream events to the correct bubble.
+      clientRunId: (ctx.Provider === "webchat" || ctx.Surface === "webchat")
+        ? (sessionCtx.MessageSid ?? undefined)
+        : undefined,
     },
   };
 

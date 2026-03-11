@@ -59,6 +59,8 @@ export type FollowupRun = {
     senderIsOwner?: boolean;
     sessionFile: string;
     workspaceDir: string;
+    /** Webchat client's original idempotency key (runId), used to route sub-agent replies back to the correct stream. */
+    clientRunId?: string;
     config: OpenClawConfig;
     skillsSnapshot?: SkillSnapshot;
     provider: string;
