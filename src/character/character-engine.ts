@@ -29,6 +29,7 @@ import { MemoryGraphSystem } from "./memory-graph.js";
 import { WorldEventSystem } from "./world-event-system.js";
 import { TodoSystem } from "./todo-system.js";
 import { AdventureSystem } from "./adventure-system.js";
+import { FirstTimeSystem } from "./first-time-system.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -84,6 +85,7 @@ export class CharacterEngine {
   readonly worldEvents: WorldEventSystem;
   readonly todos: TodoSystem;
   readonly adventures: AdventureSystem;
+  readonly firstTime: FirstTimeSystem;
 
   private _passiveAcc: number = 0;
 
@@ -172,6 +174,9 @@ export class CharacterEngine {
     // Adventure system (exploration mechanics)
     this.adventures = new AdventureSystem(this.bus, options.store);
 
+    // First-time user experience
+    this.firstTime = new FirstTimeSystem(this.bus, options.store);
+
     // ─── Cross-system wiring ───
 
     // Level up → update decay multiplier, offline hours, inventory capacity, coin bonus
@@ -204,6 +209,13 @@ export class CharacterEngine {
     // Chat milestone: every 20th message → 5 coins
     this.bus.on("chat:interval", ({ count }) => {
       this.shop.earnCoins(5, `chat_milestone_${count}`);
+    });
+
+    // Online 10min → complete the "陪伴时光" newbie task
+    this.bus.on("login:online10min", () => {
+      if (!this.firstTime.isStepCompleted("online_10min")) {
+        this.firstTime.completeStep("online_10min");
+      }
     });
   }
 

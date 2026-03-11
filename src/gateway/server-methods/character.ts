@@ -50,6 +50,7 @@ import {
   type PersistenceStore,
   inferDomainFromText,
 } from "../../character/index.js";
+import { ONBOARDING_STEPS, type OnboardingStep } from "../../character/first-time-system.js";
 import type { CronService } from "../../cron/service.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import {
@@ -387,6 +388,11 @@ function registerCharacterHooks(eng: CharacterEngine): void {
     }
     if (content) {
       engine.chatEval.onAssistantMessage(content);
+      
+      // First-time experience: mark first chat completed
+      if (!engine.firstTime.isStepCompleted("first_chat")) {
+        engine.firstTime.completeStep("first_chat");
+      }
     }
   });
 
@@ -402,6 +408,15 @@ function registerCharacterHooks(eng: CharacterEngine): void {
 
         // Record tool → skill almanac + achievements + daily task counter
         engine.recordToolUse(toolName);
+
+        // First-time experience: mark first task if this is a capability tool
+        if (["web_search", "web_fetch", "code_execute", "file_read", "file_edit"].includes(toolName)) {
+          if (!engine.firstTime.isStepCompleted("first_task_success")) {
+            engine.firstTime.recordFirstTask(toolName === "web_search" ? "search" : 
+                                              toolName === "code_execute" ? "code" : "general");
+            engine.firstTime.completeStep("first_task_success");
+          }
+        }
 
         // Map tool → domain for attribute XP
         const domain = TOOL_DOMAIN_MAP[toolName];
@@ -448,6 +463,20 @@ function getEngine(): CharacterEngine {
         .catch(() => { /* best-effort indexing */ });
     });
 
+    // First-time experience: memory capability showcase
+    engine.memoryGraph.setExtractedCallback((cluster) => {
+      if (!_broadcast || !engine) return;
+      if (engine.firstTime.shouldShowMemoryCapability()) {
+        engine.firstTime.markMemoryShown();
+        _broadcast("character", {
+          kind: "first-time-showcase",
+          type: "memory",
+          theme: cluster.theme,
+          text: `我记住了：${cluster.theme}`,
+        }, { dropIfSlow: false });
+      }
+    });
+
     // Wire up chat eval LLM callback
     engine.chatEval.setLLMEval(async (prompt) => {
       const raw = await characterLLMComplete(prompt);
@@ -470,8 +499,24 @@ function getEngine(): CharacterEngine {
 
     // Broadcast attribute/growth/level changes to connected WebSocket clients immediately
     // (client otherwise only learns via 10s polling)
-    engine.bus.on("attribute:level-change", () => {
+    engine.bus.on("attribute:level-change", (data) => {
       if (!_broadcast || !engine) return;
+      
+      // Check for attribute level-transition hints (first-time users)
+      const hint = engine.firstTime.getAttributeHint(
+        data.key,
+        data.level,
+        data.prev
+      );
+      if (hint) {
+        _broadcast("character", {
+          kind: "attribute-hint",
+          key: hint.key,
+          text: hint.text,
+          attribute: data.key,
+        }, { dropIfSlow: false });
+      }
+      
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 
@@ -480,8 +525,20 @@ function getEngine(): CharacterEngine {
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 
-    engine.bus.on("level:up", () => {
+    engine.bus.on("level:up", (data) => {
       if (!_broadcast || !engine) return;
+      
+      // Check for level up hint (first-time users)
+      const hint = engine.firstTime.getLevelUpHint();
+      if (hint) {
+        _broadcast("character", {
+          kind: "attribute-hint",
+          key: hint.key,
+          text: hint.text,
+          level: data.level,
+        }, { dropIfSlow: false });
+      }
+      
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 
@@ -499,6 +556,20 @@ function getEngine(): CharacterEngine {
       if (now - _soulAgentLastTriggeredAt < SOUL_AGENT_CHAT_COOLDOWN_MS) return;
       _soulAgentLastTriggeredAt = now;
       void _cron.enqueueRun(_soulAgentJobId, "force").catch(() => {});
+    });
+
+    // First-time experience: skill epiphany showcase
+    engine.bus.on("skill:epiphany", (data) => {
+      if (!_broadcast || !engine) return;
+      if (engine.firstTime.shouldShowSkillCapability()) {
+        engine.firstTime.markSkillShown();
+        _broadcast("character", {
+          kind: "first-time-showcase",
+          type: "skill",
+          domain: data.domainName,
+          text: `我学会了新技能：${data.domainName}领域领悟！`,
+        }, { dropIfSlow: false });
+      }
     });
 
     // Register hooks once
@@ -874,6 +945,12 @@ export const characterHandlers: GatewayRequestHandlers = {
     try {
       const e = getEngine();
       const result = e.care.feed(itemId);
+      
+      // First-time experience: mark first feed
+      if (result.ok && !e.firstTime.isStepCompleted("first_feed")) {
+        e.firstTime.completeStep("first_feed");
+      }
+      
       (respond as Function)(result.ok, { ...result, state: e.getState() });
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -1259,4 +1336,274 @@ export const characterHandlers: GatewayRequestHandlers = {
     history: e.adventures.getHistory(20),
     stats: e.adventures.getStats(),
   })),
+
+  // ── First Time Experience ──
+
+  "character.firstTime.state": safeHandler((e) => e.firstTime.getState()),
+
+  "character.firstTime.welcome": safeHandler((e) => {
+    const welcome = e.firstTime.getWelcomeMessage();
+    if (welcome) {
+      e.firstTime.markWelcomeShown();
+    }
+    return { welcome, isFirstTime: e.firstTime.isFirstTimeUser() };
+  }),
+
+  "character.firstTime.completeStep": ({ params, respond }) => {
+    const step = params?.step as string;
+    if (!step) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'step' param"));
+      return;
+    }
+
+    // Validate step against known onboarding steps
+    const validSteps = Object.values(ONBOARDING_STEPS) as string[];
+    if (!validSteps.includes(step)) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, `unknown step '${step}'`));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      e.firstTime.completeStep(step as OnboardingStep);
+      (respond as Function)(true, { ok: true, state: e.firstTime.getState() });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.firstTime.hint": safeHandler((e) => {
+    const trigger = e.firstTime.shouldShowIdleHint();
+    return { hint: trigger, progress: e.firstTime.getProgress() };
+  }),
+
+  "character.firstTime.suggestions": safeHandler((e) => ({
+    suggestions: e.firstTime.getTaskSuggestions(),
+    progress: e.firstTime.getProgress(),
+  })),
+
+  "character.firstTime.recordTask": ({ params, respond }) => {
+    const type = params?.type as string;
+    if (!type) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'type' param"));
+      return;
+    }
+
+    try {
+      const e = getEngine();
+      e.firstTime.recordFirstTask(type);
+      (respond as Function)(true, { ok: true });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.firstTime.tasks": safeHandler((e) => ({
+    tasks: e.firstTime.getNewbieTasks(),
+    progress: e.firstTime.getTaskProgress(),
+    nextTask: e.firstTime.getNextTask(),
+  })),
+
+  // ── Configuration (for new users) ──
+
+  "character.config.status": async ({ respond }) => {
+    try {
+      const providers = [];
+      
+      // Check environment variables
+      if (process.env.OPENROUTER_API_KEY) {
+        providers.push({ provider: "openrouter", model: process.env.OPENROUTER_MODEL ?? "auto" });
+      }
+      if (process.env.OPENAI_API_KEY) {
+        providers.push({ provider: "openai", model: process.env.OPENAI_MODEL ?? "gpt-4o-mini" });
+      }
+      if (process.env.ANTHROPIC_API_KEY) {
+        providers.push({ provider: "anthropic", model: process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-20241022" });
+      }
+      
+      // Check Ollama
+      try {
+        const res = await fetch("http://localhost:11434/api/tags", { 
+          method: "GET",
+          signal: AbortSignal.timeout(2000),
+        });
+        if (res.ok) providers.push({ provider: "ollama", model: "llama3.2" });
+      } catch {}
+      
+      if (providers.length === 0) {
+        (respond as Function)(true, { configured: false, needsSetup: true });
+      } else {
+        const primary = providers[0];
+        (respond as Function)(true, {
+          configured: true,
+          provider: primary.provider,
+          model: primary.model,
+          needsSetup: false,
+          providers,
+        });
+      }
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "character.config.wizard": ({ respond }) => {
+    (respond as Function)(true, {
+      providers: [
+        {
+          id: "openrouter",
+          name: "OpenRouter",
+          url: "https://openrouter.ai",
+          description: "支持多种模型，价格便宜，推荐新手使用",
+          recommended: true,
+          requiresApiKey: true,
+          models: ["auto", "anthropic/claude-3.5-sonnet", "openai/gpt-4o", "google/gemini-2.0-flash"],
+        },
+        {
+          id: "openai",
+          name: "OpenAI",
+          url: "https://platform.openai.com",
+          description: "ChatGPT 官方 API，质量稳定",
+          requiresApiKey: true,
+          models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+        },
+        {
+          id: "anthropic",
+          name: "Anthropic",
+          url: "https://console.anthropic.com",
+          description: "Claude 官方 API，擅长长文本和推理",
+          requiresApiKey: true,
+          models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+        },
+        {
+          id: "ollama",
+          name: "本地模型 (Ollama)",
+          url: "http://localhost:11434",
+          description: "完全本地运行，隐私安全",
+          requiresApiKey: false,
+          models: ["llama3.2", "qwen2.5", "deepseek-r1"],
+        },
+      ],
+      recommended: "openrouter",
+      helpUrl: "https://docs.openclaw.ai/docs/configuration",
+    });
+  },
+
+  "character.config.test": async ({ params, respond }) => {
+    const provider = params?.provider as string;
+    const apiKey = params?.apiKey as string | undefined;
+    const model = params?.model as string | undefined;
+    
+    if (!provider) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'provider' param"));
+      return;
+    }
+    
+    try {
+      // Simple validation
+      if (provider === "openrouter" && apiKey && !apiKey.startsWith("sk-or-")) {
+        (respond as Function)(true, { success: false, error: "API Key 格式错误（应以 sk-or- 开头）" });
+        return;
+      }
+      if (provider === "openai" && apiKey && !apiKey.startsWith("sk-")) {
+        (respond as Function)(true, { success: false, error: "API Key 格式错误（应以 sk- 开头）" });
+        return;
+      }
+      
+      // Test connection
+      let endpoint: string;
+      let headers: Record<string, string> = {};
+      let body: any;
+      
+      switch (provider) {
+        case "openrouter":
+          endpoint = "https://openrouter.ai/api/v1/chat/completions";
+          headers = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+          body = { model: model ?? "openai/gpt-4o-mini", messages: [{ role: "user", content: "Hi" }], max_tokens: 1 };
+          break;
+        case "openai":
+          endpoint = "https://api.openai.com/v1/chat/completions";
+          headers = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+          body = { model: model ?? "gpt-4o-mini", messages: [{ role: "user", content: "Hi" }], max_tokens: 1 };
+          break;
+        case "anthropic":
+          endpoint = "https://api.anthropic.com/v1/messages";
+          headers = { "x-api-key": apiKey ?? "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" };
+          body = { model: model ?? "claude-3-5-haiku-20241022", max_tokens: 1, messages: [{ role: "user", content: "Hi" }] };
+          break;
+        case "ollama":
+          endpoint = "http://localhost:11434/api/tags";
+          const ollamaRes = await fetch(endpoint, { method: "GET", signal: AbortSignal.timeout(5000) });
+          if (ollamaRes.ok) {
+            const tags = await ollamaRes.json();
+            const models = tags.models?.map((m: any) => m.name) ?? [];
+            (respond as Function)(true, { success: true, models });
+          } else {
+            (respond as Function)(true, { success: false, error: "Ollama 服务未运行" });
+          }
+          return;
+        default:
+          (respond as Function)(true, { success: false, error: "未知提供商" });
+          return;
+      }
+      
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
+      
+      if (response.ok) {
+        (respond as Function)(true, { success: true });
+      } else {
+        const error = await response.json();
+        (respond as Function)(true, { 
+          success: false, 
+          error: error.error?.message ?? `HTTP ${response.status}` 
+        });
+      }
+    } catch (err) {
+      (respond as Function)(true, { 
+        success: false, 
+        error: err instanceof Error ? err.message : "连接失败" 
+      });
+    }
+  },
+
+  "character.config.help": ({ params, respond }) => {
+    const provider = params?.provider as string;
+    
+    const helpSteps: Record<string, string[]> = {
+      openrouter: [
+        "1. 访问 https://openrouter.ai 并注册账号",
+        "2. 在 Settings → Keys 页面创建 API Key",
+        "3. 复制 API Key（以 sk-or- 开头）",
+        "4. 粘贴到配置页面",
+        "5. 选择默认模型（推荐 auto）",
+      ],
+      openai: [
+        "1. 访问 https://platform.openai.com 并登录",
+        "2. 在 API Keys 页面创建新的 Key",
+        "3. 复制 API Key（以 sk- 开头）",
+        "4. 粘贴到配置页面",
+      ],
+      anthropic: [
+        "1. 访问 https://console.anthropic.com 并登录",
+        "2. 在 API Keys 页面创建新的 Key",
+        "3. 复制 API Key",
+        "4. 粘贴到配置页面",
+      ],
+      ollama: [
+        "1. 安装 Ollama: https://ollama.ai",
+        "2. 运行 'ollama pull llama3.2' 下载模型",
+        "3. 确保 Ollama 服务在运行",
+      ],
+    };
+    
+    (respond as Function)(true, {
+      provider,
+      steps: helpSteps[provider] ?? ["请参考官方文档配置"],
+    });
+  },
 };

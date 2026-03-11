@@ -40,6 +40,8 @@ export type CharacterEventMap = {
   'login:streak': { streak: number; date: string };
   /** Online 30 minutes reached (daily once) */
   'login:online30min': { minutes: number };
+  /** Online 10 minutes reached (for newbie tasks) */
+  'login:online10min': { minutes: number };
   /** Coins earned */
   'shop:coin-earn': { amount: number; source: string; balance: number };
   /** Item purchased from shop */
