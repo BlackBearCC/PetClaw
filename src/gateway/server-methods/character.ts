@@ -502,8 +502,24 @@ function getEngine(): CharacterEngine {
 
     // Broadcast attribute/growth/level changes to connected WebSocket clients immediately
     // (client otherwise only learns via 10s polling)
-    engine.bus.on("attribute:level-change", () => {
+    engine.bus.on("attribute:level-change", (data) => {
       if (!_broadcast || !engine) return;
+      
+      // Check for attribute threshold hints (first-time users)
+      const hint = engine.firstTime.getAttributeHint(
+        data.key as "hunger" | "mood" | "health",
+        data.value,
+        data.prev === "critical" ? 0 : data.prev === "low" ? 30 : data.prev === "normal" ? 60 : 80
+      );
+      if (hint) {
+        _broadcast("character", {
+          kind: "attribute-hint",
+          key: hint.key,
+          text: hint.text,
+          attribute: data.key,
+        }, { dropIfSlow: false });
+      }
+      
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 
@@ -512,8 +528,20 @@ function getEngine(): CharacterEngine {
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 
-    engine.bus.on("level:up", () => {
+    engine.bus.on("level:up", (data) => {
       if (!_broadcast || !engine) return;
+      
+      // Check for level up hint (first-time users)
+      const hint = engine.firstTime.getLevelUpHint();
+      if (hint) {
+        _broadcast("character", {
+          kind: "attribute-hint",
+          key: hint.key,
+          text: hint.text,
+          level: data.level,
+        }, { dropIfSlow: false });
+      }
+      
       _broadcast("character", { kind: "state-update", state: engine.getState() }, { dropIfSlow: true });
     });
 

@@ -148,6 +148,41 @@ export const HINT_CONTENTS: HintContent[] = [
   },
 ];
 
+// ─── Attribute Threshold Hints ───
+
+/**
+ * Attribute threshold hints.
+ * Shown when attribute crosses a threshold for the first time.
+ */
+export const ATTRIBUTE_HINTS = {
+  hunger_low_50: {
+    text: "我有点饿了，聊天会消耗体力哦。记得喂我吃东西~",
+    once: true,
+  },
+  hunger_low_30: {
+    text: "好饿...如果不喂我，我就没力气陪你聊天了",
+    once: true,
+  },
+  mood_low_50: {
+    text: "我有点不开心...陪我玩玩？",
+    once: true,
+  },
+  health_low_50: {
+    text: "我有点不舒服...能给我吃点药吗？",
+    once: true,
+  },
+  attribute_full: {
+    text: "状态恢复了！感觉活力满满~",
+    once: true,
+  },
+  first_level_up: {
+    text: "升级啦！我的能力变强了，还能解锁新功能！",
+    once: true,
+  },
+} as const;
+
+export type AttributeHintKey = keyof typeof ATTRIBUTE_HINTS;
+
 // ─── First Time Tasks ───
 
 /**
@@ -367,6 +402,65 @@ export class FirstTimeSystem {
   /** Mark skill capability as shown */
   markSkillShown(): void {
     this.completeStep(ONBOARDING_STEPS.SKILL_SHOWN);
+  }
+
+  // ─── Attribute Threshold Hints ───
+
+  /** Check and get attribute threshold hint */
+  getAttributeHint(
+    key: "hunger" | "mood" | "health",
+    value: number,
+    prevValue: number
+  ): { key: AttributeHintKey; text: string } | null {
+    // Only show hints for first-time users
+    if (!this._state.isFirstTime) return null;
+
+    // Check thresholds
+    if (key === "hunger") {
+      if (prevValue >= 30 && value < 30 && !this._isAttributeHintShown("hunger_low_30")) {
+        this._markAttributeHintShown("hunger_low_30");
+        return { key: "hunger_low_30", text: ATTRIBUTE_HINTS.hunger_low_30.text };
+      }
+      if (prevValue >= 50 && value < 50 && !this._isAttributeHintShown("hunger_low_50")) {
+        this._markAttributeHintShown("hunger_low_50");
+        return { key: "hunger_low_50", text: ATTRIBUTE_HINTS.hunger_low_50.text };
+      }
+    }
+
+    if (key === "mood") {
+      if (prevValue >= 50 && value < 50 && !this._isAttributeHintShown("mood_low_50")) {
+        this._markAttributeHintShown("mood_low_50");
+        return { key: "mood_low_50", text: ATTRIBUTE_HINTS.mood_low_50.text };
+      }
+    }
+
+    if (key === "health") {
+      if (prevValue >= 50 && value < 50 && !this._isAttributeHintShown("health_low_50")) {
+        this._markAttributeHintShown("health_low_50");
+        return { key: "health_low_50", text: ATTRIBUTE_HINTS.health_low_50.text };
+      }
+    }
+
+    return null;
+  }
+
+  /** Get level up hint */
+  getLevelUpHint(): { key: AttributeHintKey; text: string } | null {
+    if (!this._state.isFirstTime) return null;
+    if (this._isAttributeHintShown("first_level_up")) return null;
+    this._markAttributeHintShown("first_level_up");
+    return { key: "first_level_up", text: ATTRIBUTE_HINTS.first_level_up.text };
+  }
+
+  private _isAttributeHintShown(key: AttributeHintKey): boolean {
+    return this._state.shownHints.includes(key as HintTrigger);
+  }
+
+  private _markAttributeHintShown(key: AttributeHintKey): void {
+    if (!this._state.shownHints.includes(key as HintTrigger)) {
+      this._state.shownHints.push(key as HintTrigger);
+      this._save();
+    }
   }
 
   // ─── Persistence ───
