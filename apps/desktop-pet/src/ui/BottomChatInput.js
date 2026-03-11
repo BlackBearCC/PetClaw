@@ -106,9 +106,14 @@ export class BottomChatInput {
     this.electronAPI.onChatStream((payload) => {
       if (!payload || !payload.runId) return;
 
-      // 查找匹配的活跃流
-      const stream = this._activeStreams.get(payload.runId);
-      if (!stream) return;
+      // 查找匹配的活跃流（fallback 到最近的活跃流，处理 smart-queue 二次 run）
+      let streamKey = payload.runId;
+      let stream = this._activeStreams.get(streamKey);
+      if (!stream) {
+        if (this._activeStreams.size === 0) return;
+        const entries = [...this._activeStreams.entries()];
+        [streamKey, stream] = entries[entries.length - 1];
+      }
 
       if (payload.state === 'delta') {
         const text = this._extractText(payload.message);
@@ -120,7 +125,11 @@ export class BottomChatInput {
       }
 
       if (payload.state === 'final') {
-        const finalText = this._extractText(payload.message) || stream.streamedText || '喵？';
+        const finalText = this._extractText(payload.message) || stream.streamedText;
+        if (!finalText) {
+          // Empty final — message was likely queued/deferred. Keep stream alive.
+          return;
+        }
         if (this.markdownPanel && hasMarkdown(finalText)) {
           this.streamingBubble.clear();
           this.markdownPanel.show(finalText);
@@ -129,20 +138,20 @@ export class BottomChatInput {
           this.streamingBubble.finalize();
         }
         this.chatPanel?.appendExternal('assistant', finalText);
-        this._activeStreams.delete(payload.runId);
+        this._activeStreams.delete(streamKey);
         this._finishSending(finalText);
       }
 
       if (payload.state === 'error') {
         this.streamingBubble.appendText(payload.errorMessage || '出错了喵~');
         this.streamingBubble.finalize();
-        this._activeStreams.delete(payload.runId);
+        this._activeStreams.delete(streamKey);
         this._finishSending(null);
       }
 
       if (payload.state === 'aborted') {
         this.streamingBubble.finalize();
-        this._activeStreams.delete(payload.runId);
+        this._activeStreams.delete(streamKey);
         this._finishSending(null);
       }
     });

@@ -93,7 +93,7 @@ async function spawnParallelSubagent(params: {
       method: "agent",
       params: {
         message: followupRun.prompt,
-        channel: followupRun.originatingChannel,
+        channel: followupRun.originatingChannel || "webchat",
         to: followupRun.originatingTo,
         accountId: followupRun.originatingAccountId,
         threadId:
