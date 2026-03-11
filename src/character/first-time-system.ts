@@ -72,21 +72,21 @@ export interface FirstTimeState {
 // ─── Welcome Messages ───
 
 /**
- * Opening messages that showcase AI capabilities.
- * Design: Not cute talk, but capability showcase.
+ * Opening messages that showcase AI capabilities + cuteness.
+ * Design: Capability first, cuteness to enhance affinity.
  * Goal: Make user want to try in first 10 seconds.
  */
 export const WELCOME_MESSAGES = [
   {
-    text: "你好！我是你的 AI 小伙伴~ 我可以帮你查资料、写代码、设置提醒，还能记住你说的所有事情！你想让我帮你做什么？",
+    text: "你好呀！我是你的 AI 小伙伴~ 🐾 我可以帮你查资料、写代码、设置提醒，还能记住你说的所有事情！你想让我帮你做什么？",
     capabilities: ["查资料", "写代码", "设置提醒", "记住事情"],
   },
   {
-    text: "嗨！我是你的智能助手~ 我会搜索信息、分析问题、管理日程，还会越来越懂你！有什么想让我帮忙的？",
-    capabilities: ["搜索信息", "分析问题", "管理日程", "学习成长"],
+    text: "嗨！我是一只数字小猫爪~ 我会搜索信息、写代码、设置提醒，还会越来越多技能！有什么想让我帮忙的？✨",
+    capabilities: ["搜索信息", "写代码", "设置提醒", "学习技能"],
   },
   {
-    text: "你好呀！我是你的 AI 伙伴~ 我能帮你处理各种任务，而且会记住我们的每一次对话，越来越了解你！试试让我做点什么？",
+    text: "终于见到你啦！我是你的智能助手~ 我能帮你处理各种任务，而且会记住我们的每一次对话，越来越懂你！试试让我做点什么？😊",
     capabilities: ["处理任务", "记住对话", "越来越懂你"],
   },
 ];
@@ -95,13 +95,13 @@ export const WELCOME_MESSAGES = [
 
 /**
  * Contextual hints to guide users.
- * Design: Non-blocking, helpful, timely.
+ * Design: Short, cute, non-intrusive.
  */
 export const HINT_CONTENTS: HintContent[] = [
   // 开场后闲置提示
   {
     trigger: HINT_TRIGGERS.IDLE_AFTER_WELCOME,
-    text: "想试试吗？可以问我任何问题~",
+    text: "想试试吗？问我任何问题~",
     delayMs: 10000,
     once: true,
     priority: 1,
@@ -109,7 +109,7 @@ export const HINT_CONTENTS: HintContent[] = [
   // 第一次饥饿提示
   {
     trigger: HINT_TRIGGERS.FIRST_HUNGER_LOW,
-    text: "我有点饿了...能喂我吃点东西吗？点击喂食按钮或者对我说'喂你吃东西'~",
+    text: "我饿了...能喂我吗？",
     delayMs: 0,
     once: true,
     priority: 10,
@@ -117,7 +117,7 @@ export const HINT_CONTENTS: HintContent[] = [
   // 第一个任务完成
   {
     trigger: HINT_TRIGGERS.FIRST_TASK_COMPLETE,
-    text: "我做到了！还有什么要我帮忙的吗？",
+    text: "搞定啦！还有什么要我帮忙的？",
     delayMs: 2000,
     once: true,
     priority: 5,
@@ -125,7 +125,7 @@ export const HINT_CONTENTS: HintContent[] = [
   // 第一次记忆
   {
     trigger: HINT_TRIGGERS.FIRST_MEMORY,
-    text: "我记住了！以后随时可以问我~",
+    text: "我记住啦！",
     delayMs: 1000,
     once: true,
     priority: 3,
@@ -133,7 +133,7 @@ export const HINT_CONTENTS: HintContent[] = [
   // 第一个技能
   {
     trigger: HINT_TRIGGERS.FIRST_SKILL,
-    text: "我学会了新技能！我会越来越厉害的~",
+    text: "我学会新技能啦！",
     delayMs: 1000,
     once: true,
     priority: 4,
@@ -141,7 +141,7 @@ export const HINT_CONTENTS: HintContent[] = [
   // 长时间闲置
   {
     trigger: HINT_TRIGGERS.IDLE_LONG,
-    text: "我在这里~ 有什么需要帮忙的吗？",
+    text: "我在呢~ 有事找我哦",
     delayMs: 0,
     once: false,
     priority: 0,
@@ -153,14 +153,15 @@ export const HINT_CONTENTS: HintContent[] = [
 /**
  * Attribute threshold hints.
  * Shown when attribute crosses a threshold for the first time.
+ * Design: Short, cute, non-intrusive.
  */
 export const ATTRIBUTE_HINTS = {
   hunger_low_50: {
-    text: "我有点饿了，聊天会消耗体力哦。记得喂我吃东西~",
+    text: "我有点饿了~",
     once: true,
   },
   hunger_low_30: {
-    text: "好饿...如果不喂我，我就没力气陪你聊天了",
+    text: "好饿...先喂喂我吧",
     once: true,
   },
   mood_low_50: {
@@ -168,15 +169,15 @@ export const ATTRIBUTE_HINTS = {
     once: true,
   },
   health_low_50: {
-    text: "我有点不舒服...能给我吃点药吗？",
+    text: "我不舒服...能给我吃点药吗？",
     once: true,
   },
   attribute_full: {
-    text: "状态恢复了！感觉活力满满~",
+    text: "状态恢复啦！活力满满~",
     once: true,
   },
   first_level_up: {
-    text: "升级啦！我的能力变强了，还能解锁新功能！",
+    text: "升级啦！✨ 我变强了！",
     once: true,
   },
 } as const;
