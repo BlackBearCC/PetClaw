@@ -21,10 +21,15 @@ export class ChatPanel {
     this.inputEl = null;
     this.isSending = false;
 
-    // 流式状态
+    // 流式状态 — 支持多条并发消息
     this.activeRunId = null;
     this.activeTypingId = null;
     this.streamedText = '';
+    /** @type {Map<string, {typingId: string, streamedText: string}>} */
+    this._activeStreams = new Map();
+    /** 连击计数 + 定时器 */
+    this._comboCount = 0;
+    this._comboTimer = null;
 
     // 消息 raw text 映射（供复制用）
     this._rawTextMap = {};
@@ -58,7 +63,10 @@ export class ChatPanel {
       </div>
       <div class="chat-input-area">
         <input type="text" class="chat-input" placeholder="跟我说点什么喵~" />
-        <button class="chat-send" title="发送">➤</button>
+        <div class="chat-send-wrap">
+          <button class="chat-send" title="发送">➤</button>
+          <span class="chat-combo-badge" style="display:none"></span>
+        </div>
       </div>
     `;
 
@@ -67,6 +75,7 @@ export class ChatPanel {
     this.sendBtn = this.element.querySelector('.chat-send');
     this.abortBtn = this.element.querySelector('.chat-abort');
     this.scrollBtn = this.element.querySelector('.scroll-to-bottom');
+    this.comboBadge = this.element.querySelector('.chat-combo-badge');
     const closeBtn = this.element.querySelector('.chat-close');
 
     this.sendBtn.addEventListener('click', () => this._send());
@@ -98,74 +107,79 @@ export class ChatPanel {
     if (!this.electronAPI?.onChatStream) return;
 
     this.electronAPI.onChatStream((payload) => {
-      if (!payload) return;
+      if (!payload || !payload.runId) return;
 
-      // 必须等 chatSend 返回设置 activeRunId 后才处理事件，
-      // 否则会误捕获上一轮的迟到事件导致回复错位
-      if (!this.isSending) return;
-      if (!this.activeRunId) return;
-      if (payload.runId !== this.activeRunId) return;
+      // 查找匹配的活跃流
+      const stream = this._activeStreams.get(payload.runId);
+      if (!stream) return;
 
       if (payload.state === 'delta') {
         const text = this._extractText(payload.message);
         if (text) {
-          this.streamedText = text;
-          // 流式中间状态用 plain text
-          this._replaceMessage(this.activeTypingId, text, false);
+          stream.streamedText = text;
+          this._replaceMessage(stream.typingId, text, false);
           this.sm.transition('talk', { force: true, duration: 500 });
         }
       }
 
       if (payload.state === 'final') {
-        const finalText = this._extractText(payload.message) || this.streamedText || '喵？';
-        // final 时切换为 markdown
-        this._replaceMessage(this.activeTypingId, finalText, true);
-        this._finishSending(finalText);
+        const finalText = this._extractText(payload.message) || stream.streamedText || '喵？';
+        this._replaceMessage(stream.typingId, finalText, true);
+        this._activeStreams.delete(payload.runId);
+        this._onStreamFinish(finalText);
       }
 
       if (payload.state === 'error') {
         const errMsg = payload.errorMessage || '出错了喵~';
-        this._replaceMessage(this.activeTypingId, errMsg, true);
-        this._finishSending(errMsg, 'negative');
+        this._replaceMessage(stream.typingId, errMsg, true);
+        this._activeStreams.delete(payload.runId);
+        this._onStreamFinish(errMsg, 'negative');
       }
 
       if (payload.state === 'aborted') {
-        this._replaceMessage(this.activeTypingId, '（已中止）', false);
-        this._finishSending('（已中止）', 'neutral');
+        this._replaceMessage(stream.typingId, '（已中止）', false);
+        this._activeStreams.delete(payload.runId);
+        this._onStreamFinish('（已中止）', 'neutral');
       }
     });
   }
 
   async _send() {
     const text = this.inputEl.value.trim();
-    if (!text || this.isSending) return;
+    if (!text) return;
 
     this.inputEl.value = '';
     this._lastUserMessage = text;
     this._addMessage('user', text);
 
     this.isSending = true;
-    this.sendBtn.style.display = 'none';
     this.abortBtn.style.display = 'flex';
     this.sm.transition('talk', { force: true, duration: 2000 });
 
+    // 连击计数
+    this._comboCount++;
+    this._updateCombo();
+
     // 显示打字指示
-    this.activeTypingId = this._addMessage('assistant', '...', false);
-    this.streamedText = '';
+    const typingId = this._addMessage('assistant', '...', false);
 
     // 尝试使用流式聊天，fallback 到旧接口
     if (this.electronAPI.chatSend) {
       try {
-        // runId 在发送前生成并设置，避免流式事件早于 invoke 返回时被丢弃
         const runId = crypto.randomUUID();
+        // 注册到并发流跟踪
+        this._activeStreams.set(runId, { typingId, streamedText: '' });
+        // 兼容：保持最新的 activeRunId（用于 abort）
         this.activeRunId = runId;
+        this.activeTypingId = typingId;
+        this.streamedText = '';
         await this.electronAPI.chatSend(text, undefined, runId);
-        // 流式事件将通过 _setupStreamListener 处理
       } catch (e) {
         console.warn('Stream send failed, falling back:', e.message);
         await this._sendLegacy(text);
       }
     } else {
+      this.activeTypingId = typingId;
       await this._sendLegacy(text);
     }
   }
@@ -177,18 +191,23 @@ export class ChatPanel {
     try {
       const response = await this.electronAPI.chatWithAI(text);
       this._replaceMessage(this.activeTypingId, response.text, true);
-      this._finishSending(response.text, response.sentiment);
+      this._onStreamFinish(response.text, response.sentiment);
     } catch (e) {
       this._replaceMessage(this.activeTypingId, `出错了喵: ${e.message}`, false);
-      this._finishSending(null, 'negative');
+      this._onStreamFinish(null, 'negative');
     }
   }
 
-  _finishSending(text, sentiment) {
-    this.isSending = false;
-    this.activeRunId = null;
-    this.sendBtn.style.display = 'flex';
-    this.abortBtn.style.display = 'none';
+  /**
+   * 单条流完成时调用（支持多条并发）
+   */
+  _onStreamFinish(text, sentiment) {
+    // 所有流都结束时才恢复发送按钮状态
+    if (this._activeStreams.size === 0) {
+      this.isSending = false;
+      this.activeRunId = null;
+      this.abortBtn.style.display = 'none';
+    }
 
     if (sentiment === 'positive') {
       this.sm.transition('happy', { force: true, duration: 3000 });
@@ -198,8 +217,8 @@ export class ChatPanel {
       const s = this._detectSentiment(text);
       if (s === 'positive') this.sm.transition('happy', { force: true, duration: 3000 });
       else if (s === 'negative') this.sm.transition('sad', { force: true, duration: 1500 });
-      else this.sm.transition('idle', { force: true });
-    } else {
+      else if (this._activeStreams.size === 0) this.sm.transition('idle', { force: true });
+    } else if (this._activeStreams.size === 0) {
       this.sm.transition('idle', { force: true });
     }
 
@@ -208,6 +227,22 @@ export class ChatPanel {
       const shortText = text.length > 30 ? text.substring(0, 30) + '...' : text;
       this.bubble.show(shortText, 3000);
     }
+  }
+
+  /** 更新连击徽章 */
+  _updateCombo() {
+    if (this._comboCount >= 2) {
+      this.comboBadge.textContent = `×${this._comboCount}`;
+      this.comboBadge.style.display = '';
+      this.comboBadge.classList.add('pop');
+      setTimeout(() => this.comboBadge.classList.remove('pop'), 300);
+    }
+    // 3 秒无新消息 → 重置连击
+    clearTimeout(this._comboTimer);
+    this._comboTimer = setTimeout(() => {
+      this._comboCount = 0;
+      this.comboBadge.style.display = 'none';
+    }, 3000);
   }
 
   async _abort() {

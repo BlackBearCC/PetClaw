@@ -211,6 +211,14 @@ export async function runReplyAgent(params: {
     queueMode: resolvedQueue.mode,
   });
 
+  // Diagnostic: log smart queue decision factors (helps debug "queue not triggering")
+  if (isActive || activeRunQueueAction !== "run-now") {
+    const { getLogger } = await import("../../logging/logger.js");
+    getLogger().info({
+      message: `[agent-runner] queue decision: action=${activeRunQueueAction} isActive=${isActive} isHeartbeat=${isHeartbeat} shouldFollowup=${shouldFollowup} queueMode=${resolvedQueue.mode} sessionKey=${sessionKey ?? "none"}`,
+    }, "smart-router");
+  }
+
   if (activeRunQueueAction === "drop") {
     typing.cleanup();
     return undefined;

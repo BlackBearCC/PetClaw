@@ -30,6 +30,8 @@ export class BottomChatInput {
     this.isSending = false;
     this.activeRunId = null;
     this.streamedText = '';
+    /** @type {Map<string, {streamedText: string}>} */
+    this._activeStreams = new Map();
 
     // 当前图标位置: 'left' | 'right'
     this._iconSide = 'left';
@@ -102,45 +104,45 @@ export class BottomChatInput {
     if (!this.electronAPI?.onChatStream) return;
 
     this.electronAPI.onChatStream((payload) => {
-      if (!payload || !this.isSending) return;
-      // 必须等 chatSend 返回设置 activeRunId 后才处理事件，
-      // 否则会误捕获上一轮的迟到事件导致回复错位
-      if (!this.activeRunId) return;
-      if (payload.runId !== this.activeRunId) return;
+      if (!payload || !payload.runId) return;
+
+      // 查找匹配的活跃流
+      const stream = this._activeStreams.get(payload.runId);
+      if (!stream) return;
 
       if (payload.state === 'delta') {
         const text = this._extractText(payload.message);
         if (text) {
-          this.streamedText = text;
+          stream.streamedText = text;
           this.streamingBubble.appendText(text);
           this.sm.transition('talk', { force: true, duration: 500 });
         }
       }
 
       if (payload.state === 'final') {
-        const finalText = this._extractText(payload.message) || this.streamedText || '喵？';
+        const finalText = this._extractText(payload.message) || stream.streamedText || '喵？';
         if (this.markdownPanel && hasMarkdown(finalText)) {
-          // 含 Markdown 语法 → 清掉碎片气泡，用面板完整展示
           this.streamingBubble.clear();
           this.markdownPanel.show(finalText);
         } else {
-          // 纯对话 → 保持原有气泡行为
           this.streamingBubble.appendText(finalText);
           this.streamingBubble.finalize();
         }
-        // 同步 AI 回复到聊天面板
         this.chatPanel?.appendExternal('assistant', finalText);
+        this._activeStreams.delete(payload.runId);
         this._finishSending(finalText);
       }
 
       if (payload.state === 'error') {
         this.streamingBubble.appendText(payload.errorMessage || '出错了喵~');
         this.streamingBubble.finalize();
+        this._activeStreams.delete(payload.runId);
         this._finishSending(null);
       }
 
       if (payload.state === 'aborted') {
         this.streamingBubble.finalize();
+        this._activeStreams.delete(payload.runId);
         this._finishSending(null);
       }
     });
@@ -148,14 +150,13 @@ export class BottomChatInput {
 
   async _send() {
     const text = this.inputEl.value.trim();
-    if (!text || this.isSending) return;
+    if (!text) return;
 
     // 发送新消息时关闭上一条 Markdown 面板
     this.markdownPanel?.hide();
 
     this.inputEl.value = '';
     this.isSending = true;
-    this.sendBtn.disabled = true;
     this.streamedText = '';
 
     // 同步用户消息到聊天面板
@@ -167,12 +168,11 @@ export class BottomChatInput {
 
     if (this.electronAPI?.chatSend) {
       try {
-        // runId 在发送前生成并设置，避免流式事件早于 invoke 返回时被丢弃
         const runId = crypto.randomUUID();
+        this._activeStreams.set(runId, { streamedText: '' });
         this.activeRunId = runId;
         await this.electronAPI.chatSend(text, undefined, runId);
       } catch (e) {
-        // fallback 旧接口
         await this._sendLegacy(text);
       }
     } else if (this.electronAPI?.chatWithAI) {
@@ -201,12 +201,13 @@ export class BottomChatInput {
   }
 
   _finishSending(text) {
-    this.isSending = false;
-    this.activeRunId = null;
-    this.sendBtn.disabled = false;
+    if (this._activeStreams.size === 0) {
+      this.isSending = false;
+      this.activeRunId = null;
+    }
     if (text) {
       this.sm.transition('happy', { force: true, duration: 3000 });
-    } else {
+    } else if (this._activeStreams.size === 0) {
       this.sm.transition('idle', { force: true });
     }
   }
