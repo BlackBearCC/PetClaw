@@ -215,6 +215,13 @@ export class CharacterEngine {
     this.bus.on("chat:interval", ({ count }) => {
       this.shop.earnCoins(5, `chat_milestone_${count}`);
     });
+
+    // Online 10min → complete newbie task
+    this.bus.on("login:online10min", () => {
+      if (this.firstTime.isFirstTimeUser() && !this.firstTime.isStepCompleted("onboarding_complete")) {
+        this.firstTime.completeStep("onboarding_complete");
+      }
+    });
   }
 
   /** Main tick — call from game loop / setInterval */

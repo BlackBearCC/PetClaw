@@ -101,6 +101,11 @@ export class LoginTracker {
     const prevMinutes = this._todayOnlineMinutes;
     this._todayOnlineMinutes += elapsed;
 
+    // 在线满 10min 事件（用于新手任务）
+    if (prevMinutes < 10 && this._todayOnlineMinutes >= 10) {
+      this._bus.emit("login:online10min", { minutes: 10 });
+    }
+
     // 在线满 30min 奖励 10 星币（每日一次）
     if (prevMinutes < 30 && this._todayOnlineMinutes >= 30) {
       this._bus.emit("login:online30min", { minutes: 30 });

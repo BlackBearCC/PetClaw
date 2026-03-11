@@ -12,10 +12,12 @@
  */
 
 import type { PersistenceStore } from "./attribute-engine.js";
+import type { EventBus } from "./event-bus.js";
 
 // ─── Types ───
 
 export type LLMCompleteCallback = (prompt: string) => Promise<string | null>;
+export type MemoryExtractedCallback = (cluster: MemoryCluster) => void;
 
 export interface MemoryCluster {
   id: string;
@@ -109,6 +111,7 @@ export class MemoryGraphSystem {
   private _pendingAiReply: string | null = null;
   private _llmComplete: LLMCompleteCallback | null = null;
   private _onIndexClusters: ((clusters: MemoryCluster[]) => void) | null = null;
+  private _onExtracted: MemoryExtractedCallback | null = null;
 
   constructor(store: PersistenceStore) {
     this._store = store;
@@ -123,6 +126,11 @@ export class MemoryGraphSystem {
   /** Register the cluster indexing callback (called after extraction) */
   setIndexCallback(callback: (clusters: MemoryCluster[]) => void): void {
     this._onIndexClusters = callback;
+  }
+
+  /** Register the extraction callback (called when a new memory is extracted) */
+  setExtractedCallback(callback: MemoryExtractedCallback): void {
+    this._onExtracted = callback;
   }
 
   /** Get current cluster array */
@@ -211,6 +219,14 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 
       // Index clusters into memory search
       this._indexToMemorySearch();
+
+      // Notify callback (for first-time experience)
+      if (this._onExtracted) {
+        const latestCluster = this.getClusters()[this.getClusters().length - 1];
+        if (latestCluster) {
+          this._onExtracted(latestCluster);
+        }
+      }
     } catch {
       // Silent fail — memory extraction is non-critical
     } finally {

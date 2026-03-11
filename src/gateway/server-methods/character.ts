@@ -466,6 +466,20 @@ function getEngine(): CharacterEngine {
         .catch(() => { /* best-effort indexing */ });
     });
 
+    // First-time experience: memory capability showcase
+    engine.memoryGraph.setExtractedCallback((cluster) => {
+      if (!_broadcast || !engine) return;
+      if (engine.firstTime.shouldShowMemoryCapability()) {
+        engine.firstTime.markMemoryShown();
+        _broadcast("character", {
+          kind: "first-time-showcase",
+          type: "memory",
+          theme: cluster.theme,
+          text: `我记住了：${cluster.theme}`,
+        }, { dropIfSlow: false });
+      }
+    });
+
     // Wire up chat eval LLM callback
     engine.chatEval.setLLMEval(async (prompt) => {
       const raw = await characterLLMComplete(prompt);
