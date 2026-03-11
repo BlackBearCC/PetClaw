@@ -117,7 +117,7 @@ describe("resolveOpenClawPackageRoot", () => {
     const project = fx("symlink-scenario");
     const bin = path.join(project, "bin", "openclaw");
     const realPkg = path.join(project, "real-pkg");
-    state.realpaths.set(abs(bin), abs(path.join(realPkg, "openclaw.mjs")));
+    state.realpaths.set(abs(bin), abs(path.join(realPkg, "petclaw.mjs")));
     setFile(path.join(realPkg, "package.json"), JSON.stringify({ name: "openclaw" }));
 
     expect(resolveOpenClawPackageRootSync({ argv1: bin })).toBe(realPkg);

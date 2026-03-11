@@ -66,7 +66,7 @@ describe("gateway e2e", () => {
 
       const configDir = path.join(tempHome, ".openclaw");
       await fs.mkdir(configDir, { recursive: true });
-      const configPath = path.join(configDir, "openclaw.json");
+      const configPath = path.join(configDir, "petclaw.json");
 
       const cfg = {
         agents: { defaults: { workspace: workspaceDir } },

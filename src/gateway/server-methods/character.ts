@@ -176,7 +176,7 @@ async function characterLLMComplete(prompt: string): Promise<string | null> {
 }
 
 // ─── Classifier LLM (smart queue router) ───
-// Reads `character.classifier` from openclaw.json; falls back to the primary model.
+// Reads `character.classifier` from petclaw.json; falls back to the primary model.
 // Default model: qwen-plus on Bailian.
 
 const CLASSIFIER_DEFAULTS = {

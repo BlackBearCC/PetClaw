@@ -309,7 +309,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
     }
     await withStateDir("state-lan-", async (stateDir) => {
       process.env.PETCLAW_STATE_DIR = stateDir;
-      process.env.OPENCLAW_CONFIG_PATH = path.join(stateDir, "openclaw.json");
+      process.env.OPENCLAW_CONFIG_PATH = path.join(stateDir, "petclaw.json");
 
       const port = getPseudoPort(40_000);
       const workspace = path.join(stateDir, "openclaw");

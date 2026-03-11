@@ -57,7 +57,7 @@ describe("runDaemonInstall integration", () => {
       "CLAWDBOT_GATEWAY_PASSWORD",
     ]);
     tempHome = await makeTempWorkspace("openclaw-daemon-install-int-");
-    configPath = path.join(tempHome, "openclaw.json");
+    configPath = path.join(tempHome, "petclaw.json");
     process.env.HOME = tempHome;
     process.env.PETCLAW_STATE_DIR = tempHome;
     process.env.OPENCLAW_CONFIG_PATH = configPath;

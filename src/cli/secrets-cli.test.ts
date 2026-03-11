@@ -124,7 +124,7 @@ describe("secrets CLI", () => {
       preflight: {
         mode: "dry-run",
         changed: true,
-        changedFiles: ["/tmp/openclaw.json"],
+        changedFiles: ["/tmp/petclaw.json"],
         warningCount: 0,
         warnings: [],
       },
@@ -133,7 +133,7 @@ describe("secrets CLI", () => {
     runSecretsApply.mockResolvedValue({
       mode: "write",
       changed: true,
-      changedFiles: ["/tmp/openclaw.json"],
+      changedFiles: ["/tmp/petclaw.json"],
       warningCount: 0,
       warnings: [],
     });

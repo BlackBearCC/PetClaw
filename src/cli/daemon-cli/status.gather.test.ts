@@ -22,7 +22,7 @@ const serviceReadCommand = vi.fn(async (_env?: NodeJS.ProcessEnv) => ({
   programArguments: ["/bin/node", "cli", "gateway", "--port", "19001"],
   environment: {
     PETCLAW_STATE_DIR: "/tmp/openclaw-daemon",
-    OPENCLAW_CONFIG_PATH: "/tmp/openclaw-daemon/openclaw.json",
+    OPENCLAW_CONFIG_PATH: "/tmp/openclaw-daemon/petclaw.json",
   },
 }));
 const resolveGatewayBindHost = vi.fn(
@@ -34,7 +34,7 @@ const resolveStateDir = vi.fn(
   (env: NodeJS.ProcessEnv) => env.PETCLAW_STATE_DIR ?? "/tmp/openclaw-cli",
 );
 const resolveConfigPath = vi.fn((env: NodeJS.ProcessEnv, stateDir: string) => {
-  return env.OPENCLAW_CONFIG_PATH ?? `${stateDir}/openclaw.json`;
+  return env.OPENCLAW_CONFIG_PATH ?? `${stateDir}/petclaw.json`;
 });
 let daemonLoadedConfig: Record<string, unknown> = {
   gateway: {
@@ -127,7 +127,7 @@ describe("gatherDaemonStatus", () => {
       "DAEMON_GATEWAY_PASSWORD",
     ]);
     process.env.PETCLAW_STATE_DIR = "/tmp/openclaw-cli";
-    process.env.OPENCLAW_CONFIG_PATH = "/tmp/openclaw-cli/openclaw.json";
+    process.env.OPENCLAW_CONFIG_PATH = "/tmp/openclaw-cli/petclaw.json";
     delete process.env.OPENCLAW_GATEWAY_TOKEN;
     delete process.env.OPENCLAW_GATEWAY_PASSWORD;
     delete process.env.DAEMON_GATEWAY_TOKEN;

@@ -72,7 +72,7 @@ describe("runtime config snapshot writes", () => {
 
   it("preserves source secret refs when writeConfigFile receives runtime-resolved config", async () => {
     await withTempHome("openclaw-config-runtime-write-", async (home) => {
-      const configPath = path.join(home, ".openclaw", "openclaw.json");
+      const configPath = path.join(home, ".openclaw", "petclaw.json");
       const sourceConfig = createSourceConfig();
       const runtimeConfig = createRuntimeConfig();
 
@@ -101,7 +101,7 @@ describe("runtime config snapshot writes", () => {
 
   it("refreshes the runtime snapshot after writes so follow-up reads see persisted changes", async () => {
     await withTempHome("openclaw-config-runtime-write-refresh-", async (home) => {
-      const configPath = path.join(home, ".openclaw", "openclaw.json");
+      const configPath = path.join(home, ".openclaw", "petclaw.json");
       const sourceConfig: OpenClawConfig = {
         models: {
           providers: {
@@ -174,7 +174,7 @@ describe("runtime config snapshot writes", () => {
 
   it("keeps the last-known-good runtime snapshot active while a specialized refresh is pending", async () => {
     await withTempHome("openclaw-config-runtime-refresh-pending-", async (home) => {
-      const configPath = path.join(home, ".openclaw", "openclaw.json");
+      const configPath = path.join(home, ".openclaw", "petclaw.json");
       const sourceConfig = createSourceConfig();
       const runtimeConfig = createRuntimeConfig();
       const nextRuntimeConfig: OpenClawConfig = {

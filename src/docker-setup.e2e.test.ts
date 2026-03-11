@@ -235,7 +235,7 @@ describe("docker-setup.sh", () => {
     const workspaceDir = join(activeSandbox.rootDir, "workspace-token-reuse");
     await mkdir(configDir, { recursive: true });
     await writeFile(
-      join(configDir, "openclaw.json"),
+      join(configDir, "petclaw.json"),
       JSON.stringify({ gateway: { auth: { mode: "token", token: "config-token-123" } } }),
     );
 

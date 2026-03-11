@@ -700,7 +700,7 @@ async function runGatewayModelSuite(params: GatewayModelSuiteParams) {
     providerOverrides: params.providerOverrides,
   });
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-live-"));
-  const tempConfigPath = path.join(tempDir, "openclaw.json");
+  const tempConfigPath = path.join(tempDir, "petclaw.json");
   await fs.writeFile(tempConfigPath, `${JSON.stringify(nextCfg, null, 2)}\n`);
   process.env.OPENCLAW_CONFIG_PATH = tempConfigPath;
 

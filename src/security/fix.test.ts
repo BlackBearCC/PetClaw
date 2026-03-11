@@ -98,7 +98,7 @@ describe("security fix", () => {
     const stateDir = await createStateDir("tightens");
     await fs.chmod(stateDir, 0o755);
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await writeJsonConfig(configPath, {
       channels: {
         telegram: { groupPolicy: "open" },
@@ -143,7 +143,7 @@ describe("security fix", () => {
 
   it("applies allowlist per-account and seeds WhatsApp groupAllowFrom from store", async () => {
     const stateDir = await createStateDir("per-account");
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     const { res, channels } = await runWhatsAppFixScenario({
       stateDir,
       configPath,
@@ -165,7 +165,7 @@ describe("security fix", () => {
 
   it("does not seed WhatsApp groupAllowFrom if allowFrom is set", async () => {
     const stateDir = await createStateDir("no-seed");
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     const { res, channels } = await runWhatsAppFixScenario({
       stateDir,
       configPath,
@@ -185,7 +185,7 @@ describe("security fix", () => {
     const stateDir = await createStateDir("invalid-config");
     await fs.chmod(stateDir, 0o755);
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{ this is not json }\n", "utf-8");
     await fs.chmod(configPath, 0o644);
 
@@ -206,7 +206,7 @@ describe("security fix", () => {
     await fs.writeFile(includePath, "{ logging: { redactSensitive: 'off' } }\n", "utf-8");
     await fs.chmod(includePath, 0o644);
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(
       configPath,
       `{ "$include": "./includes/extra.json5", channels: { whatsapp: { groupPolicy: "open" } } }\n`,

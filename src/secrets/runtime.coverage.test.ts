@@ -133,9 +133,9 @@ describe("secrets runtime target coverage", () => {
     clearSecretsRuntimeSnapshot();
   });
 
-  it("handles every openclaw.json registry target when configured as active", async () => {
+  it("handles every petclaw.json registry target when configured as active", async () => {
     const entries = listSecretTargetRegistryEntries().filter(
-      (entry) => entry.configFile === "openclaw.json",
+      (entry) => entry.configFile === "petclaw.json",
     );
     for (const [index, entry] of entries.entries()) {
       const envId = `OPENCLAW_SECRET_TARGET_${index}`;

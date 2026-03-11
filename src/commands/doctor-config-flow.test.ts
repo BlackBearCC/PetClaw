@@ -304,7 +304,7 @@ describe("doctor config flow", () => {
       const configDir = path.join(home, ".openclaw");
       await fs.mkdir(configDir, { recursive: true });
       await fs.writeFile(
-        path.join(configDir, "openclaw.json"),
+        path.join(configDir, "petclaw.json"),
         JSON.stringify(
           {
             channels: {
@@ -549,7 +549,7 @@ describe("doctor config flow", () => {
       const credentialsDir = path.join(configDir, "credentials");
       await fs.mkdir(credentialsDir, { recursive: true });
       await fs.writeFile(
-        path.join(configDir, "openclaw.json"),
+        path.join(configDir, "petclaw.json"),
         JSON.stringify(
           {
             channels: {

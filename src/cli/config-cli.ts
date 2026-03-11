@@ -343,7 +343,7 @@ export async function runConfigFile(opts: { runtime?: RuntimeEnv }) {
 
 export async function runConfigValidate(opts: { json?: boolean; runtime?: RuntimeEnv } = {}) {
   const runtime = opts.runtime ?? defaultRuntime;
-  let outputPath = CONFIG_PATH ?? "openclaw.json";
+  let outputPath = CONFIG_PATH ?? "petclaw.json";
 
   try {
     const snapshot = await readConfigFileSnapshot();

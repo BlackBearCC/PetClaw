@@ -29,7 +29,7 @@ async function withAuthSyncFixture(run: (fixture: AuthSyncFixture) => Promise<vo
   try {
     const stateDir = path.join(root, "state");
     const agentDir = path.join(stateDir, "agents", "main", "agent");
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     const authPath = path.join(agentDir, "auth.json");
 
     await fs.mkdir(agentDir, { recursive: true });

@@ -170,7 +170,7 @@ describe("security audit", () => {
     const tmp = await makeTmpDir(label);
     const stateDir = path.join(tmp, "state");
     await fs.mkdir(stateDir, { recursive: true, mode: 0o700 });
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{}\n", "utf-8");
     if (!isWindows) {
       await fs.chmod(configPath, 0o600);
@@ -646,7 +646,7 @@ description: test skill
     const tmp = await makeTmpDir("win");
     const stateDir = path.join(tmp, "state");
     await fs.mkdir(stateDir, { recursive: true });
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{}\n", "utf-8");
 
     const user = "DESKTOP-TEST\\Tester";
@@ -684,7 +684,7 @@ description: test skill
     const tmp = await makeTmpDir("win-open");
     const stateDir = path.join(tmp, "state");
     await fs.mkdir(stateDir, { recursive: true });
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{}\n", "utf-8");
 
     const user = "DESKTOP-TEST\\Tester";
@@ -847,11 +847,11 @@ description: test skill
     const stateDir = path.join(tmp, "state");
     await fs.mkdir(stateDir, { recursive: true, mode: 0o700 });
 
-    const targetConfigPath = path.join(tmp, "managed-openclaw.json");
+    const targetConfigPath = path.join(tmp, "managed-petclaw.json");
     await fs.writeFile(targetConfigPath, "{}\n", "utf-8");
     await fs.chmod(targetConfigPath, 0o444);
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.symlink(targetConfigPath, configPath);
 
     const res = await runSecurityAudit({
@@ -888,7 +888,7 @@ description: test skill
     await fs.writeFile(outsideSkillPath, "# outside\n", "utf-8");
     await fs.symlink(outsideSkillPath, path.join(workspaceDir, "skills", "leak", "SKILL.md"));
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{}\n", "utf-8");
     await fs.chmod(configPath, 0o600);
 
@@ -918,7 +918,7 @@ description: test skill
       "utf-8",
     );
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, "{}\n", "utf-8");
     if (!isWindows) {
       await fs.chmod(configPath, 0o600);
@@ -2781,7 +2781,7 @@ description: test skill
 
     const res = await audit(cfg, {
       stateDir: "/Users/test/Dropbox/.openclaw",
-      configPath: "/Users/test/Dropbox/.openclaw/openclaw.json",
+      configPath: "/Users/test/Dropbox/.openclaw/petclaw.json",
     });
 
     expectFinding(res, "fs.synced_dir", "warn");
@@ -2802,7 +2802,7 @@ description: test skill
       await fs.chmod(includePath, 0o644);
     }
 
-    const configPath = path.join(stateDir, "openclaw.json");
+    const configPath = path.join(stateDir, "petclaw.json");
     await fs.writeFile(configPath, `{ "$include": "./extra.json5" }\n`, "utf-8");
     await fs.chmod(configPath, 0o600);
 
@@ -2866,7 +2866,7 @@ description: test skill
         includeFilesystem: true,
         includeChannelSecurity: false,
         stateDir,
-        configPath: path.join(stateDir, "openclaw.json"),
+        configPath: path.join(stateDir, "petclaw.json"),
         execDockerRawFn: execDockerRawUnavailable,
       });
 
@@ -2926,7 +2926,7 @@ description: test skill
       includeFilesystem: true,
       includeChannelSecurity: false,
       stateDir: sharedInstallMetadataStateDir,
-      configPath: path.join(sharedInstallMetadataStateDir, "openclaw.json"),
+      configPath: path.join(sharedInstallMetadataStateDir, "petclaw.json"),
       execDockerRawFn: execDockerRawUnavailable,
     });
 
@@ -2965,7 +2965,7 @@ description: test skill
       includeFilesystem: true,
       includeChannelSecurity: false,
       stateDir: sharedInstallMetadataStateDir,
-      configPath: path.join(sharedInstallMetadataStateDir, "openclaw.json"),
+      configPath: path.join(sharedInstallMetadataStateDir, "petclaw.json"),
       execDockerRawFn: execDockerRawUnavailable,
     });
 
@@ -3023,7 +3023,7 @@ description: test skill
       includeFilesystem: true,
       includeChannelSecurity: false,
       stateDir,
-      configPath: path.join(stateDir, "openclaw.json"),
+      configPath: path.join(stateDir, "petclaw.json"),
       execDockerRawFn: execDockerRawUnavailable,
     });
 
@@ -3042,7 +3042,7 @@ description: test skill
       includeFilesystem: true,
       includeChannelSecurity: false,
       stateDir,
-      configPath: path.join(stateDir, "openclaw.json"),
+      configPath: path.join(stateDir, "petclaw.json"),
       execDockerRawFn: execDockerRawUnavailable,
     });
 
@@ -3068,7 +3068,7 @@ description: test skill
       includeFilesystem: true,
       includeChannelSecurity: false,
       stateDir,
-      configPath: path.join(stateDir, "openclaw.json"),
+      configPath: path.join(stateDir, "petclaw.json"),
       execDockerRawFn: execDockerRawUnavailable,
     });
 
@@ -3093,7 +3093,7 @@ description: test skill
         includeFilesystem: true,
         includeChannelSecurity: false,
         stateDir,
-        configPath: path.join(stateDir, "openclaw.json"),
+        configPath: path.join(stateDir, "petclaw.json"),
         execDockerRawFn: execDockerRawUnavailable,
       });
 
@@ -3137,7 +3137,7 @@ description: test skill
         includeFilesystem: true,
         includeChannelSecurity: false,
         stateDir,
-        configPath: path.join(stateDir, "openclaw.json"),
+        configPath: path.join(stateDir, "petclaw.json"),
         execDockerRawFn: execDockerRawUnavailable,
       });
 

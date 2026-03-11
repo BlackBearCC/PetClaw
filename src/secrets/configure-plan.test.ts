@@ -169,7 +169,7 @@ describe("secrets configure plan helpers", () => {
           path: "talk.apiKey",
           pathSegments: ["talk", "apiKey"],
           label: "talk.apiKey",
-          configFile: "openclaw.json" as const,
+          configFile: "petclaw.json" as const,
           expectedResolvedValue: "string" as const,
           ref: {
             source: "env" as const,
