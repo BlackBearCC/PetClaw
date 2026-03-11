@@ -179,7 +179,14 @@ export class MemoryGraphSystem {
   // ─── LLM extraction ───
 
   async extractAndMerge(userMsg: string, aiReply: string): Promise<void> {
-    if (this._busy || !this._llmComplete) return;
+    if (this._busy) {
+      console.log("[MemoryGraph] Busy, skipping extraction");
+      return;
+    }
+    if (!this._llmComplete) {
+      console.log("[MemoryGraph] No LLM callback, skipping extraction");
+      return;
+    }
     this._busy = true;
     try {
       const themes = this.getClusters().map(c => c.theme).join("、");
@@ -203,13 +210,24 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 不值得记忆时返回：{"worth":false}`;
 
       const result = await this._llmComplete(prompt);
-      if (!result) return;
+      console.log("[MemoryGraph] LLM result:", result?.slice(0, 200));
+      if (!result) {
+        console.log("[MemoryGraph] No LLM result");
+        return;
+      }
 
       const match = result.match(/\{[\s\S]*\}/);
-      if (!match) return;
+      if (!match) {
+        console.log("[MemoryGraph] No JSON found in result");
+        return;
+      }
 
       const parsed = JSON.parse(match[0]);
-      if (!parsed.worth) return;
+      console.log("[MemoryGraph] Parsed:", JSON.stringify(parsed));
+      if (!parsed.worth) {
+        console.log("[MemoryGraph] Not worth remembering");
+        return;
+      }
 
       this._merge(parsed, userMsg, aiReply);
       this._prune();
