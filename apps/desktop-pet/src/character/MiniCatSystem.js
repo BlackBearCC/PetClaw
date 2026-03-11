@@ -193,7 +193,7 @@ class MiniCat {
       // 绘制
       this.ctx.clearRect(0, 0, 48, 48);
       const animName = this._happy ? 'happy' : this._busy ? 'walk' : 'idle';
-      const anim = this.spriteSheet.getAnimation(animName);
+      const anim = this.spriteSheet?.getAnimation(animName);
       if (anim) {
         const frameIdx = this._frame % anim.frames.length;
         this.spriteSheet.drawFrame(this.ctx, animName, frameIdx, 0, 0, 48, 48, false);
