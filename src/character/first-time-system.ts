@@ -184,6 +184,58 @@ export const ATTRIBUTE_HINTS = {
 
 export type AttributeHintKey = keyof typeof ATTRIBUTE_HINTS;
 
+// ─── Newbie Tasks ───
+
+/** Newbie task definition */
+export interface NewbieTask {
+  id: string;
+  title: string;
+  description: string;
+  hint: string;
+  step: OnboardingStep;
+  rewards: {
+    exp?: number;
+    coins?: number;
+    itemId?: string;
+  };
+}
+
+/** Day 1 tutorial tasks */
+export const DAY1_TASKS: NewbieTask[] = [
+  {
+    id: "task-first-chat",
+    title: "初次见面",
+    description: "和宠物聊第一句话",
+    hint: "试着和我说说话~",
+    step: "first_chat" as OnboardingStep,
+    rewards: { exp: 5, coins: 10 },
+  },
+  {
+    id: "task-first-search",
+    title: "搜索小能手",
+    description: "让宠物帮你查一个问题",
+    hint: "想查什么？问我试试！",
+    step: "first_task_success" as OnboardingStep,
+    rewards: { exp: 10, coins: 20 },
+  },
+  {
+    id: "task-first-feed",
+    title: "照顾新手",
+    description: "给宠物喂第一次食",
+    hint: "我饿了...喂我吃东西吧",
+    step: "first_feed" as OnboardingStep,
+    rewards: { exp: 5, coins: 15 },
+  },
+  {
+    id: "task-online-10min",
+    title: "陪伴时光",
+    description: "在线陪伴宠物 10 分钟",
+    hint: "多陪我一会儿嘛~",
+    step: "onboarding_complete" as OnboardingStep,
+    rewards: { exp: 15, coins: 30 },
+  },
+];
+
 // ─── First Time Tasks ───
 
 /**
@@ -462,6 +514,35 @@ export class FirstTimeSystem {
       this._state.shownHints.push(key as HintTrigger);
       this._save();
     }
+  }
+
+  // ─── Newbie Tasks ───
+
+  /** Get all newbie tasks with completion status */
+  getNewbieTasks(): (NewbieTask & { completed: boolean })[] {
+    return DAY1_TASKS.map(task => ({
+      ...task,
+      completed: this.isStepCompleted(task.step),
+    }));
+  }
+
+  /** Get next incomplete task */
+  getNextTask(): (NewbieTask & { completed: boolean }) | null {
+    const incomplete = this.getNewbieTasks().filter(t => !t.completed);
+    return incomplete.length > 0 ? incomplete[0] : null;
+  }
+
+  /** Get task progress (0-1) */
+  getTaskProgress(): number {
+    const tasks = this.getNewbieTasks();
+    const completed = tasks.filter(t => t.completed).length;
+    return tasks.length > 0 ? completed / tasks.length : 0;
+  }
+
+  /** Get hint for current task */
+  getTaskHint(): string | null {
+    const nextTask = this.getNextTask();
+    return nextTask?.hint ?? null;
   }
 
   // ─── Persistence ───

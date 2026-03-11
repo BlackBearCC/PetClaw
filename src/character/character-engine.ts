@@ -30,7 +30,6 @@ import { WorldEventSystem } from "./world-event-system.js";
 import { TodoSystem } from "./todo-system.js";
 import { AdventureSystem } from "./adventure-system.js";
 import { FirstTimeSystem } from "./first-time-system.js";
-import { NewbieTaskSystem } from "./newbie-task-system.js";
 import { DEFAULT_ATTRIBUTES, GROWTH_INTIMACY } from "./presets.js";
 import type { AttributeDef } from "./attribute-engine.js";
 
@@ -87,7 +86,6 @@ export class CharacterEngine {
   readonly todos: TodoSystem;
   readonly adventures: AdventureSystem;
   readonly firstTime: FirstTimeSystem;
-  readonly newbieTasks: NewbieTaskSystem;
 
   private _passiveAcc: number = 0;
 
@@ -178,9 +176,6 @@ export class CharacterEngine {
 
     // First-time user experience
     this.firstTime = new FirstTimeSystem(this.bus, options.store);
-
-    // Newbie tasks (tutorial tasks for Day 1)
-    this.newbieTasks = new NewbieTaskSystem(this.bus, options.store, this.firstTime);
 
     // ─── Cross-system wiring ───
 

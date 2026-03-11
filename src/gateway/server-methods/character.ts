@@ -1394,29 +1394,11 @@ export const characterHandlers: GatewayRequestHandlers = {
     }
   },
 
-  // ── Newbie Tasks ──
-
-  "character.newbie.tasks": safeHandler((e) => ({
-    tasks: e.newbieTasks.getTasks(),
-    progress: e.newbieTasks.getProgress(),
-    nextTask: e.newbieTasks.getNextTask(),
+  "character.firstTime.tasks": safeHandler((e) => ({
+    tasks: e.firstTime.getNewbieTasks(),
+    progress: e.firstTime.getTaskProgress(),
+    nextTask: e.firstTime.getNextTask(),
   })),
-
-  "character.newbie.hint": safeHandler((e) => ({
-    hint: e.newbieTasks.getCurrentHint(),
-    nextTask: e.newbieTasks.getNextTask(),
-  })),
-
-  "character.newbie.suggestions": ({ params, respond }) => {
-    const context = params?.context as string;
-    try {
-      const e = getEngine();
-      const suggestions = e.newbieTasks.getSuggestions(context as any);
-      (respond as Function)(true, { suggestions });
-    } catch (err) {
-      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
-    }
-  },
 
   // ── Configuration (for new users) ──
 
