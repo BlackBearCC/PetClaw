@@ -381,6 +381,45 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
     }
   }
 
+  // ─── In-memory keyword search ───
+
+  /**
+   * Search clusters by keyword/phrase. Returns top-N clusters ranked by
+   * how many tokens from the query appear in theme/keywords/summary/fragments.
+   */
+  search(query: string, topN = 5): MemoryCluster[] {
+    const clusters = this.getClusters();
+    if (!clusters.length || !query.trim()) return [];
+
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+    const scored = clusters.map((c) => {
+      const haystack = [
+        c.theme,
+        ...c.keywords,
+        ...(c.implicitKeywords ?? []),
+        c.summary,
+        ...c.fragments.map((f) => f.text),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      let score = 0;
+      for (const token of tokens) {
+        if (haystack.includes(token)) score += 1;
+      }
+      // Boost by weight so frequently-updated clusters surface higher
+      score += c.weight * 0.1;
+      return { cluster: c, score };
+    });
+
+    return scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topN)
+      .map((s) => s.cluster);
+  }
+
   // ─── Index to memory search ───
 
   private _indexToMemorySearch(): void {

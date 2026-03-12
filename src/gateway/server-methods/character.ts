@@ -68,8 +68,8 @@ import path from "node:path";
 import { resolveStateDir } from "../../config/paths.js";
 import { loadConfig, readConfigFileSnapshotForWrite, writeConfigFile } from "../../config/config.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { getMemorySearchManager } from "../../memory/index.js";
-import type { MemoryClusterInput } from "../../memory/types.js";
+import { registerCharacterTools } from "../../agents/character-tool-registry.js";
+import { createCharacterTools } from "../../agents/tools/character-tools.js";
 import { getGlobalPluginRegistry } from "../../plugins/hook-runner-global.js";
 import type { PluginHookRegistration } from "../../plugins/types.js";
 
@@ -446,27 +446,17 @@ function getEngine(): CharacterEngine {
 
     // Wire up memory graph callbacks
     engine.memoryGraph.setLLMComplete(characterLLMComplete);
-    engine.memoryGraph.setIndexCallback((clusters) => {
-      const cfg = loadConfig();
-      const agentId = resolveDefaultAgentId(cfg);
-      getMemorySearchManager({ cfg, agentId })
-        .then(({ manager }) => {
-          if (manager?.indexClusters) {
-            const payload: MemoryClusterInput[] = clusters.map((c) => ({
-              id: c.id,
-              theme: c.theme,
-              keywords: c.keywords,
-              implicitKeywords: c.implicitKeywords,
-              summary: c.summary,
-              fragments: c.fragments.map((f) => ({ text: f.text })),
-              weight: c.weight,
-              updatedAt: c.updatedAt,
-            }));
-            manager.indexClusters(payload);
-          }
-        })
-        .catch(() => { /* best-effort indexing */ });
-    });
+
+    // Register character tools into the agent tool registry
+    registerCharacterTools(createCharacterTools({
+      broadcast: _broadcast ?? undefined,
+      engine: {
+        care: engine.care,
+        memoryGraph: engine.memoryGraph,
+        bus: { emit: (event: string, data: unknown) => engine!.bus.emit(event as never, data as never) },
+        getState: () => engine!.getState(),
+      },
+    }));
 
     // First-time experience: memory capability showcase
     engine.memoryGraph.setExtractedCallback((cluster) => {

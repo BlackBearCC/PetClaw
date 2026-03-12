@@ -25,6 +25,7 @@ import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
+import { getCharacterTools } from "./character-tool-registry.js";
 
 export function createOpenClawTools(
   options?: {
@@ -216,5 +217,5 @@ export function createOpenClawTools(
     toolAllowlist: options?.pluginToolAllowlist,
   });
 
-  return [...tools, ...pluginTools];
+  return [...tools, ...pluginTools, ...getCharacterTools()];
 }

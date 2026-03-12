@@ -42,6 +42,10 @@ const CharacterExpressMoodSchema = Type.Object({
   ]),
 });
 
+const CharacterMemoryRecallSchema = Type.Object({
+  query: Type.String(),
+});
+
 // ─── Rate limiting ───
 
 const characterToolCallsPerTurn = new Map<string, number>();
@@ -220,6 +224,52 @@ export function createCharacterExpressMoodTool(options?: {
   };
 }
 
+export function createCharacterMemoryRecallTool(options?: {
+  engine?: {
+    memoryGraph: {
+      search: (query: string, topN?: number) => Array<{
+        theme: string;
+        summary: string;
+        keywords: string[];
+        fragments: Array<{ text: string }>;
+        weight: number;
+      }>;
+    };
+  };
+}): AnyAgentTool {
+  return {
+    label: "记忆图谱搜索",
+    name: "character_memory_recall",
+    description:
+      "仅当用户提到具体过去事件、个人偏好、人际关系或需要回忆历史时调用。从角色记忆图谱中检索相关记忆簇，返回主题、摘要和关键词。日常闲聊无需调用。",
+    parameters: CharacterMemoryRecallSchema,
+    execute: async (_toolCallId, params) => {
+      const query = readStringParam(params, "query", { required: true });
+      const engine = options?.engine;
+      if (!engine) {
+        return jsonResult({ ok: false, error: "Character engine not initialized" });
+      }
+      try {
+        const clusters = engine.memoryGraph.search(query, 5);
+        if (clusters.length === 0) {
+          return jsonResult({ ok: true, results: [], message: "未找到相关记忆" });
+        }
+        const results = clusters.map((c) => ({
+          theme: c.theme,
+          summary: c.summary,
+          keywords: c.keywords,
+          relevantFragments: c.fragments.slice(0, 2).map((f) => f.text),
+          weight: c.weight,
+        }));
+        return jsonResult({ ok: true, results });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ ok: false, error: message });
+      }
+    },
+  };
+}
+
 // ─── Export all tools ───
 
 export function createCharacterTools(options?: {
@@ -232,6 +282,13 @@ export function createCharacterTools(options?: {
     };
     memoryGraph: {
       enqueueExtraction: (userMsg: string, aiReply: string) => void;
+      search: (query: string, topN?: number) => Array<{
+        theme: string;
+        summary: string;
+        keywords: string[];
+        fragments: Array<{ text: string }>;
+        weight: number;
+      }>;
     };
     bus: { emit: (event: string, data: unknown) => void };
     getState: () => unknown;
@@ -241,5 +298,6 @@ export function createCharacterTools(options?: {
     createCharacterSelfCareTool(options),
     createCharacterRememberTool(options),
     createCharacterExpressMoodTool(options),
+    createCharacterMemoryRecallTool(options),
   ];
 }
