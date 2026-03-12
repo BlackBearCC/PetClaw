@@ -97,4 +97,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeSkillFile: (skillName, content) => ipcRenderer.invoke('write-skill-file', skillName, content),
   appendAgentSession: (text) => ipcRenderer.invoke('append-agent-session', text),
   appendAgentMemory: (text) => ipcRenderer.invoke('append-agent-memory', text),
+
+  // === Steam SDK ===
+  steamRPC: (method, params) => ipcRenderer.invoke('steam-rpc', method, params),
+
+  // === Steam 事件监听 ===
+  onSteamStatus: (callback) => ipcRenderer.on('steam-status', (e, status) => callback(status)),
+  onSteamAchievement: (callback) => ipcRenderer.on('steam-achievement', (e, data) => callback(data)),
+  onSteamGameChanged: (callback) => ipcRenderer.on('steam-game-changed', (e, game) => callback(game)),
 });

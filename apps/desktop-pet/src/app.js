@@ -42,6 +42,9 @@ import { MemoryGraphPanel } from './ui/MemoryGraphPanel.js';
 import { CharacterStateSync } from './character/CharacterStateSync.js';
 import { NurturingPanel } from './ui/NurturingPanel.js';
 import { FloatText } from './ui/FloatText.js';
+import { SteamBridge, RICH_PRESENCE } from './SteamBridge.js';
+import { SteamStatusUI } from './ui/SteamStatusUI.js';
+import { AchievementCelebration } from './ui/AchievementCelebration.js';
 
 // ── 工具调用动画映射 ──────────────────────────────────────────────────────────
 // 工具名 → 动画状态。只映射"有特征感"的操作，其余留在 work 状态。
@@ -123,6 +126,7 @@ class PetClawPet {
     this.learningSystem = null;
     this.courseGenerator = null;
     this.charSync = null; // CharacterStateSync — server state bridge
+    this._steam = null; // SteamBridge — Steam SDK integration
 
     this._lastTime = 0;
     this._chatCompletionCount = 0;
@@ -238,6 +242,9 @@ class PetClawPet {
         this.bubble.show(msgs[stage], 5000);
         this.stateMachine.transition('happy', { force: true, duration: 3000 });
       }
+      // Steam 成就：成长阶段
+      if (stage >= 2) this._steam?.unlockAchievement('mature_stage');
+      if (stage >= 3) this._steam?.unlockAchievement('veteran_stage');
     });
 
     // 属性数值变化 → 浮动 +/- 文字
@@ -270,6 +277,53 @@ class PetClawPet {
           break;
       }
     });
+
+    // 2a. Steam SDK 初始化
+    if (this.electronAPI?.steamRPC) {
+      this._steam = new SteamBridge(this.electronAPI);
+      const steamResult = await this._steam.init();
+      
+      if (!steamResult.ok) {
+        // 初始化失败，记录日志（UI 会在 SteamStatusUI 中显示错误）
+        console.warn('[app] Steam 初始化失败:', steamResult.error, '-', steamResult.details);
+      } else {
+        console.log('[app] Steam 初始化成功，AppID:', steamResult.appId);
+      }
+
+      // 初始化 Steam 状态 UI（无论成功失败都显示状态）
+      const petArea = document.getElementById('pet-area');
+      if (petArea) {
+        this._steamStatusUI = new SteamStatusUI(petArea, this._steam);
+        this._steamStatusUI.init();
+      }
+
+      // 初始化成就庆祝动画
+      if (petArea) {
+        this._achievementCelebration = new AchievementCelebration(petArea, {
+          onPetAnimation: (anim, duration) => this.stateMachine.transition(anim, { force: true, duration }),
+          onBubble: (msg, duration) => this.bubble.show(msg, duration),
+        });
+      }
+
+      // 注册成就解锁回调
+      this._steam.onAchievementUnlocked((data) => {
+        console.log('[app] Steam 成就解锁:', data.id);
+        // 播放庆祝动画
+        this._achievementCelebration?.play(data);
+      });
+
+      // 注册游戏状态变化回调（宠物能"看到"玩家在玩什么游戏）
+      this._steam.onGameChanged((game) => {
+        if (!game) {
+          // 玩家退出了游戏
+          this._steam?.setStatus('idle', { charName: '猫咪' });
+          return;
+        }
+        // 玩家开始了新游戏
+        console.log('[app] 检测到 Steam 游戏:', game.name);
+        this._handleSteamGameChanged(game);
+      });
+    }
 
     // 3. 初始化渲染器（传入幼猫 sheet）
     this.renderer = new CharacterRenderer(this.canvas, this.kittenSheet, 960);
@@ -412,6 +466,7 @@ class PetClawPet {
       this.bubble.show(`🏆 成就解锁：${ach.name}！${ach.icon}`, 4000);
       this.stateMachine.transition('happy', { force: true, duration: 3000 });
       if (ach.intimacyBonus > 0) this.charSync.interact('achievement', { intimacy: ach.intimacyBonus });
+      this._steam?.unlockAchievement(ach.id); // Steam 成就解锁
     });
     this.achievementSystem.setContext({
       miniCatSystem: this.miniCatSystem,
@@ -470,6 +525,10 @@ class PetClawPet {
         ? `获得了技能碎片！(${result.fragmentProgress})`
         : `没有获得碎片...继续加油！(${result.fragmentProgress})`;
       this.bubble.show(`学完了！经验 +${result.xpGained} ${fragMsg}`, 5000);
+
+      // Steam Rich Presence: 回到空闲
+      this._steam?.setStatus('idle', { charName: '猫咪' });
+
       if (this.charAI && !this.charAI.isBusy) {
         this.charAI.generateLearningReaction('complete', result.courseTitle, result.categoryName).then(text => {
           if (!text) return;
@@ -501,6 +560,9 @@ class PetClawPet {
       this.behaviors.start();
       this.learningStatusBar.hide();
       this.stateMachine.transition('sad', { force: true, duration: 2000 });
+
+      // Steam Rich Presence: 回到空闲
+      this._steam?.setStatus('idle', { charName: '猫咪' });
 
       const interruptEvent = `[event:learning-interrupt] 宠物学习「${courseTitle}」被中断，原因：${reason}`;
       Promise.all([
@@ -564,7 +626,15 @@ class PetClawPet {
 
     // 6i-2. 面板状态变更 → 动态缩放窗口
     const syncWin = () => this._syncWindowSize();
-    this.chatPanel.onStateChange = syncWin;
+    this.chatPanel.onStateChange = () => {
+      syncWin();
+      // Steam Rich Presence: 聊天面板状态
+      if (this.chatPanel.isOpen) {
+        this._steam?.setStatus('chatting', { charName: '猫咪' });
+      } else {
+        this._steam?.setStatus('idle', { charName: '猫咪' });
+      }
+    };
     this.settingsPanel.onStateChange = syncWin;
     this.skillPanel.onStateChange = syncWin;
     if (this.nurturingPanel) this.nurturingPanel.onStateChange = syncWin;
@@ -681,6 +751,9 @@ class PetClawPet {
       this.bubble.show(greeting, 4000);
       this.stateMachine.transition('happy', { force: true, duration: 3000 });
     }, 800);
+
+    // Steam Rich Presence 初始化
+    this._steam?.setStatus('idle', { charName: '猫咪' });
 
     console.log('✅ PetClaw Pet ready!');
   }
@@ -917,6 +990,13 @@ class PetClawPet {
         localStorage.setItem('pet-chat-count', String(this._chatCompletionCount));
         this.achievementSystem?.check();
 
+        // Steam 成就：首次聊天
+        if (this._chatCompletionCount === 1) {
+          this._steam?.unlockAchievement('first_chat');
+        }
+        // Steam Stats: 对话次数
+        this._steam?.reportStat('total_chat_count', this._chatCompletionCount);
+
         // 记忆提取由服务端 message:sent hook 自动完成，无需客户端重复触发
       }
     });
@@ -1036,7 +1116,7 @@ class PetClawPet {
         this.achievementSystem?.check();
       }
 
-      // 3. 生命周期 → 宠物动画 + Agent 完成追踪
+      // 3. 生命周期 → 宠物动画 + Agent 完成追踪 + Steam Rich Presence
       if (event.stream === 'lifecycle') {
         if (event.data?.phase === 'thinking' || event.data?.phase === 'running') {
           this._agentRunning = true;
@@ -1044,6 +1124,8 @@ class PetClawPet {
           if (interruptible.includes(this.stateMachine.currentState)) {
             this.stateMachine.transition('work', { force: true });
           }
+          // Steam Rich Presence: 工作中
+          this._steam?.setStatus('working', { charName: '猫咪', task: '执行任务' });
         } else if (event.data?.phase === 'complete') {
           if (this._toolAnimTimer) { clearTimeout(this._toolAnimTimer); this._toolAnimTimer = null; }
           this._agentRunning = false;
@@ -1055,6 +1137,8 @@ class PetClawPet {
             this.agentStatsTracker?.recordComplete(event.sessionKey);
           }
           this.achievementSystem?.check();
+          // Steam Rich Presence: 回到空闲
+          this._steam?.setStatus('idle', { charName: '猫咪' });
         }
       }
     });
@@ -1105,6 +1189,8 @@ class PetClawPet {
       this.stateMachine.transition('sad', { force: true, duration: 1500 });
       this.bubble.show(`${place}失败了...`, 3000);
     }
+    // Steam Rich Presence: 探险结束回到 Idle
+    this._steam?.setStatus('idle', { charName: '猫咪' });
   }
 
   /**
@@ -1201,6 +1287,10 @@ class PetClawPet {
 
     // 立即显示占位气泡，CharacterAI 返回后再补一条反应
     this.bubble.show(`开始学习「${courseTitle}」了~ 📚`, 3000);
+
+    // Steam Rich Presence: 学习中
+    this._steam?.setStatus('learning', { charName: '猫咪', task: courseTitle });
+
     if (this.charAI && !this.charAI.isBusy) {
       this.charAI.generateLearningReaction('start', courseTitle, categoryName).then(text => {
         if (!text) return;
@@ -1271,6 +1361,80 @@ class PetClawPet {
     }
   }
 
+  /**
+   * 处理 Steam 游戏状态变化（宠物"看到"玩家在玩什么）
+   * @param {{appId: number, name: string}} game
+   */
+  _handleSteamGameChanged(game) {
+    if (!game) return;
+
+    // 更新 Rich Presence
+    this._steam?.setStatus('playing', { charName: '猫咪', task: game.name });
+
+    // 根据游戏类型生成不同反应
+    const gameName = game.name.toLowerCase();
+    let reaction = null;
+
+    // 游戏类型检测
+    if (/counter.?strike|csgo|valorant|overwatch|apex|fortnite|pubg/i.test(gameName)) {
+      // FPS 游戏
+      reaction = [
+        `在玩 ${game.name}！加油射击！🎯`,
+        `${game.name}！爆头爆头！💥`,
+        `看主人玩 FPS 好紧张喵！`,
+      ];
+    } else if (/dota|league|lol|heroes|hon/i.test(gameName)) {
+      // MOBA 游戏
+      reaction = [
+        `在玩 ${game.name}！推塔推塔！🏰`,
+        `${game.name}！我会为主人加油的！`,
+        `5v5 对战！主人最棒！`,
+      ];
+    } else if (/minecraft|terraria|stardew|animal crossing|simcity|cities/i.test(gameName)) {
+      // 休闲建造
+      reaction = [
+        `${game.name}！好想也建个猫窝~ 🏠`,
+        `建造大师！主人加油！`,
+        `这个游戏看起来很放松喵~`,
+      ];
+    } else if (/elden ring|dark souls|sekiro|bloodborne|hollow knight|celeste/i.test(gameName)) {
+      // 硬核游戏
+      reaction = [
+        `${game.name}...这游戏很难吧？主人小心！💪`,
+        `受苦游戏！主人加油！我会陪着你的！`,
+        `别灰心！你一定能过关的喵！`,
+      ];
+    } else if (/gta|red dead|skyrim|witcher|cyberpunk|fallout/i.test(gameName)) {
+      // 开放世界 RPG
+      reaction = [
+        `${game.name}！开放世界探险！🗺️`,
+        `大地图探索！带带我喵~`,
+        `这个游戏世界好大！`,
+      ];
+    } else if (/rocket league|fifa|nba|madden|f1|forza|need for speed/i.test(gameName)) {
+      // 体育/竞速
+      reaction = [
+        `${game.name}！体育精神！⚽`,
+        `冲冲冲！主人最快！🏎️`,
+        `看主人比赛好激动！`,
+      ];
+    } else {
+      // 其他游戏
+      reaction = [
+        `在玩 ${game.name}！好玩吗？🎮`,
+        `${game.name}！主人开心最重要！`,
+        `看主人玩游戏真有趣喵~`,
+      ];
+    }
+
+    // 显示反应
+    if (reaction && !this.bubble.isVisible() && !this.chatPanel.isOpen) {
+      const msg = reaction[Math.floor(Math.random() * reaction.length)];
+      this.bubble.show(msg, 4000);
+      this.stateMachine.transition('happy', { force: true, duration: 2000 });
+    }
+  }
+
   _showFallback() {
     const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#FFB464';
@@ -1316,6 +1480,10 @@ class PetClawPet {
     this.bubble?.destroy();
     this.chatPanel?.destroy();
     this.settingsPanel?.destroy();
+    // Steam 组件清理
+    this._steamStatusUI?.destroy();
+    this._achievementCelebration?.destroy();
+    this._steam?.flushStats?.(); // 确保统计数据同步
   }
 }
 

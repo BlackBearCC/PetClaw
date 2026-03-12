@@ -31,6 +31,7 @@ const os = require('os');
 const { LLMService, AI_PROVIDERS } = require('./llm-service');
 const { Win32Monitor } = require('./win32-monitor');
 const { logger, installGlobalLogger } = require('./logger');
+const { SteamService } = require('./steam-service');
 
 // 劫持 console → 同时写入 ~/.petclaw/logs/
 installGlobalLogger();
@@ -57,6 +58,7 @@ app.on('second-instance', () => {
 let mainWindow = null;
 let llmService = null;
 let win32Monitor = null;
+let steamService = null;
 let clipboardInterval = null;
 let lastClipboardText = '';
 
@@ -415,7 +417,27 @@ app.whenReady().then(async () => {
 
   win32Monitor = new Win32Monitor();
 
+  // 初始化 Steam SDK
+  steamService = new SteamService();
+  const steamResult = steamService.init();
+  if (!steamResult.ok) {
+    // 初始化失败，记录详细原因
+    console.warn('[main] Steam 初始化失败:', steamResult.error, '-', steamResult.details);
+  } else {
+    console.log('[main] Steam 初始化成功，AppID:', steamResult.appId);
+  }
+
+  // 注册 Steam RPC IPC handler
+  ipcMain.handle('steam-rpc', async (event, method, params) => {
+    return steamService.dispatch(method, params);
+  });
+
   createWindow();
+
+  // 设置 Steam 服务的窗口引用（用于发送事件）
+  if (steamService) {
+    steamService.setMainWindow(mainWindow);
+  }
 
   // 注册流式聊天事件转发到渲染进程
   llmService.onChatEvent((payload) => {
@@ -486,6 +508,8 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   if (clipboardInterval) { clearInterval(clipboardInterval); clipboardInterval = null; }
   if (win32Monitor) { win32Monitor.destroy(); win32Monitor = null; }
+  // Steam SDK 关闭
+  if (steamService) { steamService.shutdown(); steamService = null; }
   // Gateway 子进程必须同步杀干净，否则 app 退出后 node.exe 成孤儿
   if (llmService) { llmService.destroy(); llmService = null; }
 });
