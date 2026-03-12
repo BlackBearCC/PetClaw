@@ -10,6 +10,48 @@
  * - 事件驱动：成就解锁、状态变化都通过 IPC 通知渲染进程
  */
 
+// 游戏进程名称到 Steam AppID 的映射（常见游戏）
+const GAME_PROCESS_MAP = {
+  'cs2.exe': { appId: 730, name: 'Counter-Strike 2' },
+  'csgo.exe': { appId: 730, name: 'Counter-Strike: Global Offensive' },
+  'valorant.exe': { appId: 1086940, name: 'VALORANT' },
+  'overwatch2.exe': { appId: 2357570, name: 'Overwatch 2' },
+  'apexlegends.exe': { appId: 1172470, name: 'Apex Legends' },
+  'fortnite.exe': { appId: 1228930, name: 'Fortnite' },
+  'pubg.exe': { appId: 578080, name: 'PUBG: BATTLEGROUNDS' },
+  'dota2.exe': { appId: 570, name: 'Dota 2' },
+  'league of legends.exe': { appId: 5426, name: 'League of Legends' },
+  'leagueclient.exe': { appId: 5426, name: 'League of Legends' },
+  'heroes of newerth.exe': { appId: 204360, name: 'Heroes of Newerth' },
+  'minecraft.exe': { appId: 271870, name: 'Minecraft' },
+  'javaw.exe': { appId: 271870, name: 'Minecraft' },
+  'terraria.exe': { appId: 1281930, name: 'Terraria' },
+  'stardew valley.exe': { appId: 413150, name: 'Stardew Valley' },
+  'animal crossing.exe': { appId: 1418310, name: 'Animal Crossing: New Horizons' },
+  'simcity5.exe': { appId: 242760, name: 'SimCity' },
+  'cities.exe': { appId: 255710, name: 'Cities: Skylines' },
+  'eldenring.exe': { appId: 1245620, name: 'Elden Ring' },
+  'darksoulsiii.exe': { appId: 374320, name: 'Dark Souls III' },
+  'ds2animtoolset.exe': { appId: 388030, name: 'Dark Souls II' },
+  'sekiro.exe': { appId: 814380, name: 'Sekiro: Shadows Die Twice' },
+  'bloodborne.exe': { appId: 440900, name: 'Bloodborne' },
+  'hollow knight.exe': { appId: 367520, name: 'Hollow Knight' },
+  'celeste.exe': { appId: 504230, name: 'Celeste' },
+  'gta5.exe': { appId: 271590, name: 'Grand Theft Auto V' },
+  'launcher.exe': { appId: 271590, name: 'GTA Online' },
+  'rdr2.exe': { appId: 1174180, name: 'Red Dead Redemption 2' },
+  'skyrimse.exe': { appId: 489830, name: 'The Elder Scrolls V: Skyrim' },
+  'witcher3.exe': { appId: 292030, name: 'The Witcher 3: Wild Hunt' },
+  'cyberpunk2077.exe': { appId: 1091500, name: 'Cyberpunk 2077' },
+  'fallout4.exe': { appId: 377160, name: 'Fallout 4' },
+  'rocketleague.exe': { appId: 252490, name: 'Rocket League' },
+  'fifa23.exe': { appId: 1688620, name: 'FIFA 23' },
+  'nba2k23.exe': { appId: 1644950, name: 'NBA 2K23' },
+  'f1_2022.exe': { appId: 1692250, name: 'F1 2022' },
+  'forza horizon 5.exe': { appId: 1551360, name: 'Forza Horizon 5' },
+  'need for speed.exe': { appId: 1313140, name: 'Need for Speed' },
+};
+
 class SteamService {
   constructor() {
     this._enabled = false;
@@ -20,6 +62,17 @@ class SteamService {
     this._currentGame = null; // { appId, name }
     this._mainWindow = null; // 用于发送事件
     this._pollInterval = null; // 状态轮询
+    this._gamePollInterval = null; // 游戏检测轮询
+    this._win32Monitor = null; // Win32 监控实例（用于检测游戏进程）
+    this._lastDetectedGame = null; // 上一次检测到的游戏
+  }
+
+  /**
+   * 设置 Win32 监控实例（用于游戏进程检测）
+   * @param {Win32Monitor} monitor 
+   */
+  setWin32Monitor(monitor) {
+    this._win32Monitor = monitor;
   }
 
   /**
@@ -82,12 +135,100 @@ class SteamService {
       // 5. 启动状态轮询（检测 Steam 关闭/重启）
       this._startStatusPolling();
 
+      // 6. 启动游戏检测轮询（使用 Win32 监控检测游戏进程）
+      this._startGameDetection();
+
       return { ok: true, appId, userLoggedIn: this._userLoggedIn };
     } catch (e) {
       this._initError = 'exception';
       console.error('[steam] 初始化异常:', e.message);
       return { ok: false, error: 'exception', details: e.message };
     }
+  }
+
+  /**
+   * 启动游戏检测轮询
+   * 使用 Win32Monitor 检测前台进程，如果是游戏进程则触发通知
+   */
+  _startGameDetection() {
+    if (this._gamePollInterval) clearInterval(this._gamePollInterval);
+
+    // 每 3 秒检测一次
+    this._gamePollInterval = setInterval(() => {
+      if (!this._enabled || !this._win32Monitor?.available) return;
+
+      // 通过 Win32Monitor 获取前台窗口信息
+      const info = this._win32Monitor.getForegroundInfo();
+      if (!info) return;
+
+      const processName = (info.processName || '').toLowerCase();
+      const title = info.title || '';
+
+      // 跳过宠物自身和 Steam 相关进程
+      if (processName.includes('electron') || processName.includes('pet-claw') || 
+          processName.includes('steam') || processName.includes('steamwebhelper')) {
+        return;
+      }
+
+      // 查找游戏映射
+      let detectedGame = null;
+
+      // 精确匹配进程名
+      for (const [proc, gameInfo] of Object.entries(GAME_PROCESS_MAP)) {
+        if (processName === proc || processName.endsWith(proc)) {
+          detectedGame = gameInfo;
+          break;
+        }
+      }
+
+      // 如果没找到，检查标题是否包含常见游戏关键词
+      if (!detectedGame && this._win32Monitor.isGameWindow?.(title)) {
+        detectedGame = { appId: 0, name: title.substring(0, 50) };
+      }
+
+      // 检测到游戏且发生变化
+      if (detectedGame) {
+        const gameKey = `${detectedGame.appId}-${detectedGame.name}`;
+        if (this._lastDetectedGame !== gameKey) {
+          this._lastDetectedGame = gameKey;
+          this._currentGame = detectedGame;
+          console.log('[steam] 🎮 检测到游戏:', detectedGame.name);
+          // 通知渲染进程
+          this._mainWindow?.webContents?.send?.('steam-game-changed', this._currentGame);
+        }
+      } else if (this._lastDetectedGame !== null) {
+        // 玩家退出游戏
+        this._lastDetectedGame = null;
+        this._currentGame = null;
+        console.log('[steam] 🎮 玩家退出游戏');
+        this._mainWindow?.webContents?.send?.('steam-game-changed', null);
+      }
+    }, 3000);
+  }
+
+  /**
+   * 手动检测当前游戏（供 RPC 调用）
+   * @returns {object} 当前游戏信息或 null
+   */
+  detectCurrentGame() {
+    if (!this._win32Monitor?.available) {
+      return { ok: false, reason: 'win32_monitor_unavailable' };
+    }
+
+    const info = this._win32Monitor.getForegroundInfo();
+    if (!info) {
+      return { ok: true, game: null };
+    }
+
+    const processName = (info.processName || '').toLowerCase();
+    
+    for (const [proc, gameInfo] of Object.entries(GAME_PROCESS_MAP)) {
+      if (processName === proc || processName.endsWith(proc)) {
+        return { ok: true, game: gameInfo };
+      }
+    }
+
+    return { ok: true, game: null };
   }
 
   /**
@@ -351,6 +492,10 @@ class SteamService {
     if (this._pollInterval) {
       clearInterval(this._pollInterval);
       this._pollInterval = null;
+    }
+    if (this._gamePollInterval) {
+      clearInterval(this._gamePollInterval);
+      this._gamePollInterval = null;
     }
     if (this._enabled && this._gw) {
       try {

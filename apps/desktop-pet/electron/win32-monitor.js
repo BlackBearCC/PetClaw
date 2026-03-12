@@ -229,6 +229,26 @@ class Win32Monitor {
     return 'other';
   }
 
+  /**
+   * 检查窗口标题是否可能是游戏窗口
+   * @param {string} title 窗口标题
+   * @returns {boolean}
+   */
+  isGameWindow(title) {
+    if (!title) return false;
+    const t = title.toLowerCase();
+    // 常见游戏关键词
+    const gameKeywords = [
+      'game', 'play', 'gaming', 'online', 'multiplayer',
+      'league', 'dota', 'valorant', 'overwatch', 'apex',
+      'fortnite', 'pubg', 'minecraft', 'terraria', 'stardew',
+      'elden ring', 'dark soul', 'witcher', 'gta', 'cyberpunk',
+      'rocket league', 'fifa', 'nba', 'forza', 'halo',
+      'call of duty', 'battlefield', 'destiny', 'warframe'
+    ];
+    return gameKeywords.some(kw => t.includes(kw));
+  }
+
   destroy() {
     this.stopForegroundPolling();
     this.stopDockTracking();
