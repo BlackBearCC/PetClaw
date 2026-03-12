@@ -720,7 +720,7 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
   try {
     const page = await cron.listPage({ limit: 100 } as Parameters<typeof cron.listPage>[0]);
     const existingNames = new Set(
-      ((page as { items?: Array<{ name?: string }> }).items ?? []).map((j) => j.name),
+      ((page as { jobs?: Array<{ name?: string }> }).jobs ?? []).map((j) => j.name),
     );
 
     if (!existingNames.has("Character World Agent")) {
