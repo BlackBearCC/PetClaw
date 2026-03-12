@@ -449,7 +449,7 @@ function getEngine(): CharacterEngine {
     // Wire up memory graph callbacks
     engine.memoryGraph.setLLMComplete(characterLLMComplete);
 
-    // Index memory clusters into SQLite FTS for character_memory_recall tool
+    // Index memory clusters into SQLite FTS for character_memory_graph_search tool
     engine.memoryGraph.setIndexCallback((clusters) => {
       const cfg = loadConfig();
       const agentId = resolveDefaultAgentId(cfg);

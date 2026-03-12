@@ -44,7 +44,7 @@ const CharacterExpressMoodSchema = Type.Object({
   ]),
 });
 
-const CharacterMemoryRecallSchema = Type.Object({
+const CharacterMemoryGraphSearchSchema = Type.Object({
   query: Type.String(),
 });
 
@@ -226,16 +226,18 @@ export function createCharacterExpressMoodTool(options?: {
   };
 }
 
-export function createCharacterMemoryRecallTool(options?: {
+export function createCharacterMemoryGraphSearchTool(options?: {
   cfg?: OpenClawConfig;
   agentId?: string;
 }): AnyAgentTool {
   return {
-    label: "记忆图谱搜索",
-    name: "character_memory_recall",
+    label: "记忆图谱联想检索",
+    name: "character_memory_graph_search",
     description:
-      "仅当用户提到具体过去事件、个人偏好、人际关系或需要回忆历史时调用。从角色记忆图谱中检索相关记忆簇，返回主题、摘要和关键词。日常闲聊无需调用。",
-    parameters: CharacterMemoryRecallSchema,
+      "在角色记忆图谱中进行语义联想检索。记忆图谱以簇（cluster）为节点、relatedClusters 为边，存储从对话中提炼的主题、偏好、人际关系和隐式关联。" +
+      "适用场景：发现概念间的潜在联系、跨主题知识相似性联想、推断用户偏好与行为模式、溯源某个话题相关的历史记忆簇。" +
+      "不适用：直接精确查找某条对话原文（用 sessions_history）；日常闲聊无需调用。",
+    parameters: CharacterMemoryGraphSearchSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query", { required: true });
       try {
@@ -291,6 +293,6 @@ export function createCharacterTools(options?: {
     createCharacterSelfCareTool(options),
     createCharacterRememberTool(options),
     createCharacterExpressMoodTool(options),
-    createCharacterMemoryRecallTool({ cfg: options?.cfg, agentId: options?.agentId }),
+    createCharacterMemoryGraphSearchTool({ cfg: options?.cfg, agentId: options?.agentId }),
   ];
 }
