@@ -11,7 +11,6 @@ export function normalizeQueueMode(raw?: string): QueueMode | undefined {
   if (cleaned === "interrupt" || cleaned === "interrupts" || cleaned === "abort") {
     return "interrupt";
   }
-  }
   if (cleaned === "steer" || cleaned === "steering") {
     return "steer";
   }

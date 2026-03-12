@@ -1111,12 +1111,7 @@ class PetClawPet {
             this.agentStatsTracker?.recordTool(event.sessionKey, toolName, taskName);
           }
         } else if (event.data?.phase === 'complete' || event.data?.phase === 'error') {
-          // tool 结束：若主代理仍在运行则回退到"思考中"，否则收起
-          if (this._agentRunning) {
-            this.toolStatusBar.showThinking();
-          } else {
-            this.toolStatusBar.hide();
-          }
+          this.toolStatusBar.hide();
         }
         this.achievementSystem?.check();
       }
@@ -1130,9 +1125,6 @@ class PetClawPet {
         if (event.data?.phase === 'start') {
           if (isRealMainAgent) {
             this._agentRunning = true;
-            if (!this.toolStatusBar.isInToolMode) {
-              this.toolStatusBar.showThinking();
-            }
           }
           const interruptible = ['idle', 'idle_ear_twitch', 'idle_yawn', 'walk', 'sit', 'sleep'];
           if (interruptible.includes(this.stateMachine.currentState)) {
