@@ -1124,9 +1124,9 @@ class PetClawPet {
       // 3. 生命周期 → 宠物动画 + Agent 完成追踪 + Steam Rich Presence
       if (event.stream === 'lifecycle') {
         const isMainSession = !event.sessionKey || event.sessionKey.endsWith(':main');
-        if (event.data?.phase === 'thinking' || event.data?.phase === 'running') {
+        if (event.data?.phase === 'start') {
           this._agentRunning = true;
-          // 主代理思考中：若无 tool 占用状态条则显示"思考中"
+          // 主代理开始：若无 tool 占用状态条则显示"思考中"
           if (isMainSession && !this.toolStatusBar.isInToolMode) {
             this.toolStatusBar.showThinking();
           }
@@ -1136,7 +1136,7 @@ class PetClawPet {
           }
           // Steam Rich Presence: 工作中
           this._steam?.setStatus('working', { charName: '猫咪', task: '执行任务' });
-        } else if (event.data?.phase === 'complete') {
+        } else if (event.data?.phase === 'end' || event.data?.phase === 'error') {
           if (this._toolAnimTimer) { clearTimeout(this._toolAnimTimer); this._toolAnimTimer = null; }
           this._agentRunning = false;
           if (isMainSession) this.toolStatusBar.hide();
