@@ -512,9 +512,18 @@ export function applyCompactionDefaults(cfg: OpenClawConfig): OpenClawConfig {
     return cfg;
   }
   const compaction = defaults?.compaction;
-  if (compaction?.mode) {
-    return cfg;
-  }
+
+  // PetClaw defaults: safeguard mode, 6 recent turns preserved, memory flush at 8000 tokens.
+  // User config (compaction / compaction.memoryFlush) spreads on top and overrides any of these.
+  const updatedCompaction = {
+    mode: "safeguard" as const,
+    recentTurnsPreserve: 6,
+    ...compaction,
+    memoryFlush: {
+      softThresholdTokens: 8000,
+      ...(compaction?.memoryFlush),
+    },
+  };
 
   return {
     ...cfg,
@@ -522,10 +531,7 @@ export function applyCompactionDefaults(cfg: OpenClawConfig): OpenClawConfig {
       ...cfg.agents,
       defaults: {
         ...defaults,
-        compaction: {
-          ...compaction,
-          mode: "safeguard",
-        },
+        compaction: updatedCompaction,
       },
     },
   };
