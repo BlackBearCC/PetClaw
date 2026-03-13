@@ -8,6 +8,13 @@
   <script src="lib/marked.umd.js"></script>
 </head>
 <body>
+  <!-- 手绘抖动滤镜 — 让边框/线条有不均匀的手绘感 -->
+  <svg width="0" height="0" style="position:absolute">
+    <filter id="sketchy-filter">
+      <feTurbulence type="turbulence" baseFrequency="0.03" numOctaves="4" seed="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </svg>
   <div id="app-container">
     <!-- 宠物区域（始终显示在右下角） -->
     <div id="pet-area">
