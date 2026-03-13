@@ -226,6 +226,12 @@ export class DailyTaskSystem {
     return this._tasks;
   }
 
+  /** Refresh progress & check completion for all active tasks */
+  refreshProgress(): void {
+    this._checkCompletion();
+    this._save();
+  }
+
   /** Increment a counter (called externally for events not covered by bus) */
   incrementCounter(key: keyof DailyCounters, amount: number = 1): void {
     (this._counters[key] as number) += amount;
@@ -303,7 +309,8 @@ export class DailyTaskSystem {
     for (const task of this._tasks) {
       if (task.status !== "active") continue;
       const completed = this._checkCondition(task.condition);
-      task.progress = this._getProgress(task.condition);
+      const raw = this._getProgress(task.condition);
+      task.progress = task.condition.threshold > 0 ? Math.min(1, raw / task.condition.threshold) : 1;
       if (completed) {
         task.status = "completed";
         this._bus.emit("daily:task-complete", { taskId: task.id, difficulty: task.difficulty });

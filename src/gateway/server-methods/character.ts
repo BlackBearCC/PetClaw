@@ -709,7 +709,7 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
         sessionTarget: "isolated",
         sessionKey: "cron:character:soul-agent",
         payload: { kind: "agentTurn", message: SOUL_AGENT_MESSAGE, lightContext: true },
-        delivery: { mode: "announce", channel: "last" },
+        delivery: { mode: "none" },
       } as Parameters<typeof cron.add>[0]);
       _soulAgentJobId = (job as { id?: string })?.id ?? null;
       console.log("[character] registered Soul Agent cron job", _soulAgentJobId);
@@ -720,12 +720,14 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
       ).find((j) => j.name === "Character Soul Agent");
       _soulAgentJobId = existing?.id ?? null;
 
-      // Migrate: old jobs may have delivery.mode="none", update to "announce"
-      if (_soulAgentJobId && existing?.delivery?.mode !== "announce") {
+      // Migrate: old jobs may have had delivery.mode="announce", revert to "none".
+      // Soul Agent output is already broadcast via soul-action character event;
+      // announce delivery causes duplicate messages to Telegram/Discord.
+      if (_soulAgentJobId && existing?.delivery?.mode !== "none") {
         await cron.update(_soulAgentJobId, {
-          delivery: { mode: "announce", channel: "last" },
+          delivery: { mode: "none" },
         } as Parameters<typeof cron.update>[1]);
-        console.log("[character] migrated Soul Agent delivery to announce");
+        console.log("[character] migrated Soul Agent delivery to none (soul-action handles it)");
       }
     }
   } catch (e) {
@@ -1102,6 +1104,7 @@ export const characterHandlers: GatewayRequestHandlers = {
     try {
       const e = getEngine();
       const tasks = await e.dailyTasks.ensureTodayTasks();
+      e.dailyTasks.refreshProgress();
       (respond as Function)(true, { tasks, counters: e.dailyTasks.getCounters() });
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
