@@ -60,6 +60,10 @@ import {
 import type { WorkspaceBootstrapFile } from "../../agents/workspace.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import type { GatewayBroadcastFn } from "../server-broadcast.js";
+import { resolveDeliveryTarget } from "../../cron/isolated-agent/delivery-target.js";
+import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
+import { createDefaultDeps } from "../../cli/deps.js";
+import { createOutboundSendDeps } from "../../cli/outbound-send-deps.js";
 
 // ─── File-based persistence store ───
 
@@ -549,14 +553,46 @@ ${conditions.map((c, i) => `${i + 1}. ${c}`).join('\n')}
         }
       }
 
-      if (!_broadcast) return;
-      _broadcast("character", {
-        kind: "adventure-completed",
-        success: data.result.success,
-        location: data.adventure.location,
-        narrative: data.result.narrative,
-        rewards: data.result.rewards,
-      }, { dropIfSlow: false });
+      // 1) WebSocket broadcast → desktop-pet client
+      if (_broadcast) {
+        _broadcast("character", {
+          kind: "adventure-completed",
+          success: data.result.success,
+          location: data.adventure.location,
+          narrative: data.result.narrative,
+          rewards: data.result.rewards,
+        }, { dropIfSlow: false });
+      }
+
+      // 2) Announce to external channels (Telegram/Discord/etc.) — best-effort, non-blocking
+      void (async () => {
+        try {
+          const cfg = loadConfig();
+          const agentId = resolveDefaultAgentId(cfg);
+          const target = await resolveDeliveryTarget(cfg, agentId, { channel: "last" });
+          if (!target.ok) return; // no channel configured or no previous conversation
+
+          const { narrative, rewards } = data.result;
+          const rewardText = rewards.exp ? ` (+${rewards.exp}EXP, +${rewards.coins}币)` : "";
+          const text = narrative
+            ? `${narrative}${rewardText}`
+            : data.result.success
+              ? `探险成功！在${data.adventure.location}满载而归${rewardText}`
+              : `探险失败了...在${data.adventure.location}遭遇了挫折`;
+
+          await deliverOutboundPayloads({
+            cfg,
+            channel: target.channel,
+            to: target.to,
+            accountId: target.accountId,
+            threadId: target.threadId,
+            payloads: [{ text }],
+            deps: createOutboundSendDeps(createDefaultDeps()),
+          });
+        } catch (err) {
+          console.warn("[adventure] announce delivery failed:", err);
+        }
+      })();
     });
 
     // Event-driven Soul Agent: trigger on every chat interval (every 5 messages)
