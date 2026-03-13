@@ -1192,6 +1192,8 @@ class PetClawPet {
         this._handleChatEval(payload);
       } else if (payload?.kind === 'adventure-completed') {
         this._handleAdventureCompleted(payload);
+      } else if (payload?.kind === 'adventure-encounter') {
+        this._handleAdventureEncounter(payload);
       }
     });
 
@@ -1219,7 +1221,6 @@ class PetClawPet {
     if (success) {
       this.stateMachine.transition('happy', { force: true, duration: 2000 });
       const rewardText = rewards?.exp ? ` +${rewards.exp}EXP` : '';
-      // Use LLM narrative if available, otherwise fallback
       const text = narrative
         ? `${narrative}${rewardText}`
         : `${place}成功！${rewardText}`;
@@ -1229,8 +1230,36 @@ class PetClawPet {
       const text = narrative || `${place}失败了...`;
       this.bubble.show(text, 5000);
     }
-    // Steam Rich Presence: 探险结束回到 Idle
     this._steam?.setStatus('idle', { charName: '猫咪' });
+    // Refresh nurturing panel if open on adventure tab
+    if (this.nurturingPanel?.isOpen && this.nurturingPanel._activeTab === 'adventure') {
+      this.nurturingPanel._refresh();
+    }
+  }
+
+  /**
+   * 探险途中事件：服务端 tick 触发 encounter 后推送气泡通知
+   */
+  _handleAdventureEncounter({ encounter } = {}) {
+    if (!encounter) return;
+    const type = encounter.type;
+    if (type === 'narration') {
+      // Plain text bubble
+      this.bubble.show(encounter.text, 3000);
+    } else if (type === 'discovery') {
+      // Discovery with golden highlight
+      const coins = encounter.reward?.coins ? ` +${encounter.reward.coins}🪙` : '';
+      this.bubble.show(`${encounter.text}${coins}`, 3000);
+      this.stateMachine.transition('happy', { force: true, duration: 1500 });
+    } else if (type === 'choice') {
+      // Choice event — show text, panel will handle buttons
+      this.bubble.show(`${encounter.text}`, 5000);
+      this.stateMachine.transition('idle_ear_twitch', { force: true, duration: 2000 });
+    }
+    // Refresh nurturing panel if open on adventure tab
+    if (this.nurturingPanel?.isOpen && this.nurturingPanel._activeTab === 'adventure') {
+      this.nurturingPanel._refresh();
+    }
   }
 
   /**

@@ -64,8 +64,8 @@ export type CharacterEventMap = {
   'todo:regenerated': { cleared: number };
   /** Adventure started */
   'adventure:started': { adventure: { id: string; location: string; type: string; duration: number } };
-  /** Adventure choice made */
-  'adventure:choice': { adventure: { id: string }; choiceId: string };
+  /** Adventure encounter triggered (narration/choice/discovery) */
+  'adventure:encounter': { adventure: { id: string; location: string }; encounter: { id: string; type: string; text: string; choices?: { a: string; b: string }; selectedChoice?: string; petDecided?: boolean; reward?: { item?: string; coins?: number } } };
   /** Adventure completed */
   'adventure:completed': { adventure: { id: string; location: string }; result: { success: boolean; narrative: string; rewards: { exp: number; coins: number; items?: string[] }; damage?: number } };
   /** Adventure cancelled */

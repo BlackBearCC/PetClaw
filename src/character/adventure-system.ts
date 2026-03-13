@@ -1,9 +1,9 @@
 /**
- * Adventure System — Exploration and adventure mechanics
+ * Adventure System v2 — Rumor Card + Encounter model
  *
- * AI can start adventures (idle/interactive/explore modes).
- * Adventures generate rewards and narratives based on character state.
- * LLM generates story/choices on start and rich narrative on completion.
+ * Inspired by Darkest Dungeon carriage encounters.
+ * Players pick a rumor card to depart, then encounter events along the way.
+ * LLM generates rumor cards, opening narratives, encounters, and settlement stories.
  */
 
 import type { EventBus } from "./event-bus.js";
@@ -11,19 +11,33 @@ import type { PersistenceStore } from "./attribute-engine.js";
 
 // ─── Types ───
 
-export type AdventureType = "idle" | "interactive" | "explore";
-export type AdventureRisk = "safe" | "moderate" | "dangerous";
-export type AdventureStatus = "ongoing" | "completed";
+export interface RumorCard {
+  id: string;
+  hook: string;        // "森林深处传来奇怪的歌声..."
+  location: string;    // "神秘森林"
+  risk: 1 | 2 | 3;    // star rating
+  duration: number;    // minutes
+  theme: string;       // "forest" | "ruin" | "water" | "cave" | "town" | "sky"
+}
+
+export interface Encounter {
+  id: string;
+  type: "narration" | "choice" | "discovery";
+  text: string;
+  choices?: { a: string; b: string };
+  selectedChoice?: "a" | "b";
+  petDecided?: boolean;
+  reward?: { item?: string; coins?: number };
+  /** Scheduled trigger time (ms since adventure start) */
+  triggerAtMs: number;
+  triggeredAt?: number;
+  resolvedAt?: number;
+}
 
 export interface AdventureRewards {
   exp: number;
   coins: number;
   items?: string[];
-}
-
-export interface AdventureChoice {
-  id: string;
-  text: string;
 }
 
 export interface AdventureResult {
@@ -35,68 +49,55 @@ export interface AdventureResult {
 
 export interface Adventure {
   id: string;
-  type: AdventureType;
-  location: string;
-  duration: number; // minutes
-  status: AdventureStatus;
-  risk: AdventureRisk;
-  rewards: AdventureRewards;
+  card: RumorCard;
+  status: "exploring" | "completed" | "cancelled";
+  encounters: Encounter[];
+  nextEncounterIdx: number;
   story?: string;
-  choices?: AdventureChoice[];
-  selectedChoice?: string;
   result?: AdventureResult;
   createdAt: number;
-  startedAt?: number;
+  startedAt: number;
   endedAt?: number;
-}
-
-export interface AdventureSystemConfig {
-  maxActiveAdventures?: number;
-  baseRewards?: {
-    safe: AdventureRewards;
-    moderate: AdventureRewards;
-    dangerous: AdventureRewards;
-  };
 }
 
 /** LLM completion callback — same pattern as memory-graph / chat-eval */
 export type AdventureLLMCallback = (prompt: string) => Promise<string | null>;
 
-const DEFAULT_CONFIG: Required<AdventureSystemConfig> = {
-  maxActiveAdventures: 1,
-  baseRewards: {
-    safe: { exp: 20, coins: 10 },
-    moderate: { exp: 50, coins: 25 },
-    dangerous: { exp: 100, coins: 50 },
-  },
+// ─── Rewards Config ───
+
+const BASE_REWARDS: Record<1 | 2 | 3, AdventureRewards> = {
+  1: { exp: 20, coins: 10 },
+  2: { exp: 50, coins: 25 },
+  3: { exp: 100, coins: 50 },
 };
 
-const RISK_LABELS: Record<AdventureRisk, string> = {
-  safe: "安全",
-  moderate: "中等风险",
-  dangerous: "危险",
+const SUCCESS_RATES: Record<1 | 2 | 3, number> = {
+  1: 0.9,
+  2: 0.7,
+  3: 0.5,
 };
+
+/** Choice timeout in ms (60s) */
+const CHOICE_TIMEOUT_MS = 60_000;
+
+const RANDOM_ITEMS = ["巴别鱼罐头", "不要恐慌胶囊", "马文牌退烧贴", "泛银河爆破饮"];
 
 // ─── Adventure System ───
 
 export class AdventureSystem {
   private readonly bus: EventBus;
   private readonly store: PersistenceStore;
-  private readonly config: Required<AdventureSystemConfig>;
   private adventures: Map<string, Adventure> = new Map();
   private activeAdventureId: string | null = null;
   private _llmComplete: AdventureLLMCallback | null = null;
   /** Prevents tick() from double-triggering while async LLM completes */
   private _completing = false;
+  /** Cached rumor cards for the current session */
+  private _cachedRumors: RumorCard[] = [];
 
-  constructor(
-    bus: EventBus,
-    store: PersistenceStore,
-    config?: AdventureSystemConfig
-  ) {
+  constructor(bus: EventBus, store: PersistenceStore) {
     this.bus = bus;
     this.store = store;
-    this.config = { ...DEFAULT_CONFIG, ...config };
     this.load();
   }
 
@@ -105,13 +106,15 @@ export class AdventureSystem {
     this._llmComplete = callback;
   }
 
+  // ─── Persistence ───
+
   private load(): void {
     const data = this.store.load("adventure-system");
     if (data?.adventures) {
       const list = data.adventures as Adventure[];
       for (const adv of list) {
         this.adventures.set(adv.id, adv);
-        if (adv.status === "ongoing") {
+        if (adv.status === "exploring") {
           this.activeAdventureId = adv.id;
         }
       }
@@ -119,12 +122,12 @@ export class AdventureSystem {
   }
 
   private save(): void {
-    // Trim completed adventures to last 50 to prevent unbounded growth
-    const completed = Array.from(this.adventures.values())
-      .filter((a) => a.status === "completed")
+    // Trim finished adventures to last 50
+    const finished = Array.from(this.adventures.values())
+      .filter((a) => a.status !== "exploring")
       .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt));
-    if (completed.length > 50) {
-      for (const adv of completed.slice(50)) {
+    if (finished.length > 50) {
+      for (const adv of finished.slice(50)) {
         this.adventures.delete(adv.id);
       }
     }
@@ -134,326 +137,352 @@ export class AdventureSystem {
     });
   }
 
+  // ─── Rumor Cards ───
+
   /**
-   * Start a new adventure
+   * Generate 3 rumor cards via LLM.
+   * Falls back to hardcoded cards if LLM is unavailable.
    */
-  startAdventure(params: {
-    type: AdventureType;
-    location: string;
-    duration: number;
-    risk: AdventureRisk;
-    story?: string;
-    choices?: AdventureChoice[];
-  }): Adventure | { error: string } {
+  async generateRumors(): Promise<RumorCard[]> {
+    if (this._llmComplete) {
+      try {
+        const cards = await this._generateRumorsLLM();
+        if (cards.length >= 3) {
+          this._cachedRumors = cards.slice(0, 3);
+          return this._cachedRumors;
+        }
+      } catch {
+        // fall through to fallback
+      }
+    }
+
+    this._cachedRumors = this._fallbackRumors();
+    return this._cachedRumors;
+  }
+
+  private async _generateRumorsLLM(): Promise<RumorCard[]> {
+    if (!this._llmComplete) return [];
+
+    // Gather recent locations to avoid repetition
+    const recentLocations = this.getHistory(5)
+      .map((a) => a.card.location)
+      .filter(Boolean);
+    const avoidText = recentLocations.length
+      ? `\n避免重复以下地点: ${recentLocations.join("、")}`
+      : "";
+
+    const prompt = `你是一个桌面宠物的探险线索卡生成器。请生成3张探险线索卡，每张卡描述一个可探险的地点。
+
+要求：
+1. 每张卡包含: hook(1句话钩子文案，15字以内), location(地点名，4字以内), risk(1-3整数，对应安全/中等/危险), duration(分钟数，3-15), theme(氛围标签，只能是 forest/ruin/water/cave/town/sky 之一)
+2. 3张卡的risk分布尽量不同（建议1张1星、1张2星、1张3星，但可以变化）
+3. hook要有悬念感和吸引力，让人想点进去
+4. duration建议: 1星=3-5分钟, 2星=5-10分钟, 3星=10-15分钟${avoidText}
+
+返回严格JSON数组（无代码块标记）：
+[{"hook":"...","location":"...","risk":1,"duration":5,"theme":"forest"},{"hook":"...","location":"...","risk":2,"duration":8,"theme":"ruin"},{"hook":"...","location":"...","risk":3,"duration":12,"theme":"cave"}]`;
+
+    const raw = await this._llmComplete(prompt);
+    if (!raw) return [];
+
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+
+    const parsed = JSON.parse(match[0]) as Array<{
+      hook?: string;
+      location?: string;
+      risk?: number;
+      duration?: number;
+      theme?: string;
+    }>;
+
+    const VALID_THEMES = new Set(["forest", "ruin", "water", "cave", "town", "sky"]);
+
+    return parsed
+      .filter((c) => c.hook && c.location && c.risk && c.duration && c.theme)
+      .map((c) => ({
+        id: `rumor-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        hook: c.hook!,
+        location: c.location!,
+        risk: Math.min(3, Math.max(1, Math.round(c.risk!))) as 1 | 2 | 3,
+        duration: Math.min(15, Math.max(1, Math.round(c.duration!))),
+        theme: VALID_THEMES.has(c.theme!) ? c.theme! : "forest",
+      }));
+  }
+
+  private _fallbackRumors(): RumorCard[] {
+    const now = Date.now();
+    return [
+      {
+        id: `rumor-${now}-a`,
+        hook: "森林深处传来奇怪的歌声...",
+        location: "神秘森林",
+        risk: 1,
+        duration: 3,
+        theme: "forest",
+      },
+      {
+        id: `rumor-${now}-b`,
+        hook: "废弃钟楼的门今天居然开了",
+        location: "废弃钟楼",
+        risk: 2,
+        duration: 7,
+        theme: "ruin",
+      },
+      {
+        id: `rumor-${now}-c`,
+        hook: "地下洞穴传来低沉的吼声...",
+        location: "幽暗洞穴",
+        risk: 3,
+        duration: 12,
+        theme: "cave",
+      },
+    ];
+  }
+
+  /** Get the currently cached rumor cards */
+  getCachedRumors(): RumorCard[] {
+    return this._cachedRumors;
+  }
+
+  // ─── Start Adventure ───
+
+  /**
+   * Start an adventure by selecting a rumor card.
+   * Generates opening narrative + pre-generates all encounters via LLM.
+   * Returns the adventure once LLM generation is complete (or falls back).
+   */
+  async startAdventure(cardId: string): Promise<Adventure | { error: string }> {
     // Check if already on an adventure
     if (this.activeAdventureId) {
       const active = this.adventures.get(this.activeAdventureId);
-      if (active && active.status === "ongoing") {
+      if (active && active.status === "exploring") {
         return { error: "Already on an adventure" };
       }
     }
 
+    // Find the card from cached rumors
+    const card = this._cachedRumors.find((c) => c.id === cardId);
+    if (!card) {
+      return { error: "Rumor card not found" };
+    }
+
     const id = `adv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
 
     const adventure: Adventure = {
       id,
-      type: params.type,
-      location: params.location,
-      duration: params.duration,
-      status: "ongoing",
-      risk: params.risk,
-      rewards: this.config.baseRewards[params.risk],
-      story: params.story,
-      choices: params.choices,
-      createdAt: Date.now(),
-      startedAt: Date.now(),
+      card,
+      status: "exploring",
+      encounters: [],
+      nextEncounterIdx: 0,
+      createdAt: now,
+      startedAt: now,
     };
 
     this.adventures.set(id, adventure);
     this.activeAdventureId = id;
-    this.save();
 
-    this.bus.emit("adventure:started", { adventure });
+    // Generate opening story + encounters via LLM
+    await this._generateStoryAndEncounters(adventure);
+
+    this.save();
+    this.bus.emit("adventure:started", {
+      adventure: { id, location: card.location, type: "explore", duration: card.duration },
+    });
 
     return adventure;
   }
 
   /**
-   * Generate story + choices for an adventure via LLM.
-   * Called after startAdventure; mutates the adventure in-place and saves.
-   * Returns true if LLM generation succeeded.
+   * Generate opening narrative + all encounters for an adventure.
    */
-  async generateStory(adventureId: string): Promise<boolean> {
-    const adventure = this.adventures.get(adventureId);
-    if (!adventure || !this._llmComplete) return false;
-    // Skip if story already provided by caller
-    if (adventure.story) return true;
+  private async _generateStoryAndEncounters(adventure: Adventure): Promise<void> {
+    const card = adventure.card;
+    const encounterCount = this._encounterCount(card.risk, card.duration);
+    const durationMs = card.duration * 60 * 1000;
 
-    const isInteractive = adventure.type === "interactive";
-    const prompt = `你是一个桌面宠物的探险叙事生成器。请根据以下信息生成一段探险开场叙事。
-
-探险信息：
-- 地点：${adventure.location}
-- 类型：${adventure.type === "idle" ? "闲置探险" : adventure.type === "interactive" ? "交互探险" : "主动探索"}
-- 风险等级：${RISK_LABELS[adventure.risk]}
-- 时长：${adventure.duration}分钟
-
-要求：
-1. 用第二人称"你"来叙述，语气活泼有趣
-2. 生成一段2-3句话的开场故事描述（story字段）
-3. ${isInteractive ? "生成3个有趣的选择分支（choices数组），每个选择会影响探险走向" : "不需要生成choices"}
-4. 故事要符合地点和风险等级的氛围
-
-返回严格JSON（无代码块标记）：
-${isInteractive
-  ? `{"story":"开场叙事...","choices":[{"id":"c1","text":"选择1"},{"id":"c2","text":"选择2"},{"id":"c3","text":"选择3"}]}`
-  : `{"story":"开场叙事..."}`
-}`;
-
-    try {
-      const raw = await this._llmComplete(prompt);
-      if (!raw) return false;
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) return false;
-      const parsed = JSON.parse(match[0]) as { story?: string; choices?: Array<{ id?: string; text?: string }> };
-      if (!parsed.story) return false;
-
-      adventure.story = parsed.story;
-      if (isInteractive && Array.isArray(parsed.choices) && parsed.choices.length >= 2) {
-        adventure.choices = parsed.choices
-          .filter((c) => c.text)
-          .map((c, i) => ({ id: c.id || `c${i + 1}`, text: c.text! }));
-      }
-      this.save();
-      return true;
-    } catch (err) {
-      console.log("[Adventure] LLM story generation failed:", err);
-      return false;
-    }
-  }
-
-  /**
-   * Make a choice in an interactive adventure
-   */
-  makeChoice(adventureId: string, choiceId: string): Adventure | { error: string } {
-    const adventure = this.adventures.get(adventureId);
-    if (!adventure) {
-      return { error: "Adventure not found" };
-    }
-
-    if (adventure.status !== "ongoing") {
-      return { error: "Adventure not ongoing" };
-    }
-
-    if (adventure.type !== "interactive") {
-      return { error: "Not an interactive adventure" };
-    }
-
-    adventure.selectedChoice = choiceId;
-    this.save();
-
-    this.bus.emit("adventure:choice", { adventure, choiceId });
-
-    return adventure;
-  }
-
-  /**
-   * Complete an adventure with results
-   */
-  completeAdventure(adventureId: string, result?: AdventureResult): Adventure | { error: string } {
-    const adventure = this.adventures.get(adventureId);
-    if (!adventure) {
-      return { error: "Adventure not found" };
-    }
-
-    if (adventure.status !== "ongoing") {
-      return { error: "Adventure not ongoing" };
-    }
-
-    // Generate result if not provided
-    const finalResult: AdventureResult = result ?? this._generateResultSync(adventure);
-
-    adventure.status = "completed";
-    adventure.endedAt = Date.now();
-    adventure.result = finalResult;
-    this.activeAdventureId = null;
-    this._completing = false;
-    this.save();
-
-    this.bus.emit("adventure:completed", { adventure, result: finalResult });
-
-    return adventure;
-  }
-
-  /**
-   * Async completion: try LLM narrative, fall back to sync generation.
-   * Used by tick() for richer auto-completion narratives.
-   */
-  private async _completeWithLLM(adventureId: string): Promise<void> {
-    const adventure = this.adventures.get(adventureId);
-    if (!adventure || adventure.status !== "ongoing") {
-      this._completing = false;
-      return;
-    }
-
-    // Determine success first (same logic as sync path)
-    const success = this._rollSuccess(adventure);
-    const rewards = this._calculateRewards(adventure, success);
-
-    // Try LLM narrative
-    let narrative: string | null = null;
     if (this._llmComplete) {
       try {
-        narrative = await this._generateNarrativeLLM(adventure, success);
+        const generated = await this._generateViaLLM(card, encounterCount);
+        if (generated) {
+          adventure.story = generated.story;
+          adventure.encounters = generated.encounters.map((enc, i) => ({
+            ...enc,
+            triggerAtMs: this._encounterTiming(i, generated.encounters.length, durationMs),
+          }));
+          return;
+        }
       } catch {
-        // fall through to sync fallback
+        // fall through to fallback
       }
     }
 
-    if (!narrative) {
-      narrative = this._pickFallbackNarrative(adventure, success);
-    }
-
-    // Finalize — adventure may have been cancelled during LLM call
-    const current = this.adventures.get(adventureId);
-    if (!current || current.status !== "ongoing") {
-      this._completing = false;
-      return;
-    }
-
-    this.completeAdventure(adventureId, {
-      success,
-      narrative,
-      rewards,
-      damage: success ? undefined : 10,
-    });
+    // Fallback
+    adventure.story = `你踏上了前往${card.location}的旅程，空气中弥漫着未知的气息...`;
+    adventure.encounters = this._fallbackEncounters(encounterCount, durationMs);
   }
 
-  /**
-   * Generate a completion narrative via LLM
-   */
-  private async _generateNarrativeLLM(adventure: Adventure, success: boolean): Promise<string | null> {
+  private async _generateViaLLM(
+    card: RumorCard,
+    encounterCount: number,
+  ): Promise<{ story: string; encounters: Omit<Encounter, "triggerAtMs">[] } | null> {
     if (!this._llmComplete) return null;
 
-    const choiceText = adventure.selectedChoice && adventure.choices
-      ? adventure.choices.find((c) => c.id === adventure.selectedChoice)?.text ?? "无"
-      : "无";
+    const riskLabels: Record<1 | 2 | 3, string> = { 1: "安全", 2: "中等风险", 3: "危险" };
+    const encounterTypeGuide = encounterCount === 1
+      ? "生成1个事件，类型随机"
+      : `生成${encounterCount}个事件，至少1个非narration类型`;
 
-    const prompt = `你是一个桌面宠物的探险叙事生成器。请根据以下探险结果生成一段结局叙事。
+    const prompt = `你是一个桌面宠物的探险叙事生成器。宠物要去探险了！
 
 探险信息：
-- 地点：${adventure.location}
-- 类型：${adventure.type === "idle" ? "闲置探险" : adventure.type === "interactive" ? "交互探险" : "主动探索"}
-- 风险等级：${RISK_LABELS[adventure.risk]}
-- 时长：${adventure.duration}分钟
-- 开场故事：${adventure.story || "无"}
-- 做出的选择：${choiceText}
-- 结果：${success ? "成功" : "失败"}
+- 线索：${card.hook}
+- 地点：${card.location}
+- 风险等级：${riskLabels[card.risk]}
+- 时长：${card.duration}分钟
+- 氛围：${card.theme}
 
-要求：
-1. 用第二人称"你"叙述，语气生动有趣，3-4句话
-2. 结局要与开场故事和选择呼应
-3. 成功时描述收获和惊喜，失败时描述遗憾但要有鼓励
-4. 不要提及具体的数值奖励
+请生成：
+1. story: 2-3句话的开场叙事，用"你"来叙述，语气活泼有趣，符合地点氛围
+2. encounters: ${encounterTypeGuide}
 
-只返回叙事文本，不要JSON包裹，不要引号。`;
+事件类型说明：
+- narration: 纯叙事，text为旅途见闻描述（2-3句话）
+- choice: 遇到岔路/困境，text为情景描述，choices.a和choices.b为两个选项（各10字以内）
+- discovery: 发现东西，text为发现描述，reward.coins为获得金币数(5-20)
+
+返回严格JSON（无代码块标记）：
+{"story":"开场叙事...","encounters":[{"type":"narration","text":"..."},{"type":"choice","text":"...","choices":{"a":"选项A","b":"选项B"}},{"type":"discovery","text":"...","reward":{"coins":10}}]}`;
 
     const raw = await this._llmComplete(prompt);
     if (!raw) return null;
-    // Strip any accidental JSON wrapping or quotes
-    const cleaned = raw.replace(/^["'`]+|["'`]+$/g, "").trim();
-    return cleaned.length > 10 ? cleaned : null;
-  }
 
-  /**
-   * Roll success/failure based on risk + choice
-   */
-  private _rollSuccess(adventure: Adventure): boolean {
-    const successChances: Record<AdventureRisk, number> = {
-      safe: 0.9,
-      moderate: 0.7,
-      dangerous: 0.5,
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      story?: string;
+      encounters?: Array<{
+        type?: string;
+        text?: string;
+        choices?: { a?: string; b?: string };
+        reward?: { item?: string; coins?: number };
+      }>;
     };
 
-    let successChance = successChances[adventure.risk];
-
-    if (adventure.selectedChoice && adventure.choices?.length) {
-      const idx = adventure.choices.findIndex((c) => c.id === adventure.selectedChoice);
-      if (idx === 0) successChance += 0.1;
-      else if (idx === adventure.choices.length - 1) successChance -= 0.1;
+    if (!parsed.story || !Array.isArray(parsed.encounters) || parsed.encounters.length === 0) {
+      return null;
     }
 
-    return Math.random() < successChance;
+    const VALID_TYPES = new Set(["narration", "choice", "discovery"]);
+    const encounters: Omit<Encounter, "triggerAtMs">[] = parsed.encounters
+      .filter((e) => e.type && VALID_TYPES.has(e.type) && e.text)
+      .slice(0, encounterCount)
+      .map((e, i) => {
+        const base: Omit<Encounter, "triggerAtMs"> = {
+          id: `enc-${Date.now()}-${i}`,
+          type: e.type as "narration" | "choice" | "discovery",
+          text: e.text!,
+        };
+        if (e.type === "choice" && e.choices?.a && e.choices?.b) {
+          (base as Encounter).choices = { a: e.choices.a, b: e.choices.b };
+        }
+        if (e.type === "discovery" && e.reward) {
+          (base as Encounter).reward = {
+            coins: typeof e.reward.coins === "number" ? e.reward.coins : 10,
+            item: e.reward.item,
+          };
+        }
+        return base;
+      });
+
+    if (encounters.length === 0) return null;
+
+    return { story: parsed.story, encounters };
   }
 
   /**
-   * Calculate rewards based on success/failure
+   * Determine encounter count based on risk and duration.
    */
-  private _calculateRewards(adventure: Adventure, success: boolean): AdventureRewards {
-    let rewards: AdventureRewards = { ...adventure.rewards };
-    if (!success) {
-      rewards = {
-        exp: Math.floor(rewards.exp * 0.3),
-        coins: Math.floor(rewards.coins * 0.3),
+  private _encounterCount(risk: 1 | 2 | 3, durationMin: number): number {
+    if (risk === 1 || durationMin <= 5) return 1;
+    if (risk === 2 || durationMin <= 10) return 1 + Math.round(Math.random()); // 1-2
+    return 2 + Math.round(Math.random()); // 2-3
+  }
+
+  /**
+   * Calculate encounter trigger time (evenly distributed, offset from start).
+   */
+  private _encounterTiming(index: number, total: number, durationMs: number): number {
+    // Distribute encounters in the middle 60% of the adventure (20%-80%)
+    const start = durationMs * 0.2;
+    const range = durationMs * 0.6;
+    if (total === 1) return start + range * 0.5;
+    return start + (range / (total - 1)) * index;
+  }
+
+  private _fallbackEncounters(count: number, durationMs: number): Encounter[] {
+    const types: Array<"narration" | "choice" | "discovery"> =
+      count === 1
+        ? ["discovery"]
+        : count === 2
+          ? ["narration", "choice"]
+          : ["narration", "choice", "discovery"];
+
+    return types.slice(0, count).map((type, i) => {
+      const base: Encounter = {
+        id: `enc-${Date.now()}-${i}`,
+        type,
+        text:
+          type === "narration"
+            ? "前方出现了一片奇异的景象，空气中飘来阵阵花香..."
+            : type === "choice"
+              ? "前方出现了两条路，一条看起来安全但绕远，另一条充满未知..."
+              : "你在路边发现了一个闪闪发光的东西！",
+        triggerAtMs: this._encounterTiming(i, count, durationMs),
       };
-    }
-
-    // Add random items on success — must use valid ITEM_DEFS keys
-    if (success && Math.random() > 0.5) {
-      const items = ["巴别鱼罐头", "不要恐慌胶囊", "马文牌退烧贴", "泛银河爆破饮"];
-      rewards.items = [items[Math.floor(Math.random() * items.length)]];
-    }
-
-    return rewards;
+      if (type === "choice") {
+        base.choices = { a: "走安全的路", b: "走未知的路" };
+      }
+      if (type === "discovery") {
+        base.reward = { coins: 10 };
+      }
+      return base;
+    });
   }
 
-  /**
-   * Fallback hardcoded narratives (used when LLM unavailable)
-   */
-  private _pickFallbackNarrative(adventure: Adventure, success: boolean): string {
-    const narratives = success
-      ? [
-          `探险成功！你在${adventure.location}发现了宝藏。`,
-          `经过一番探索，你安全返回，带回了不少收获。`,
-          `这次冒险虽然惊险，但结果令人满意。`,
-        ]
-      : [
-          `探险失败了，你在${adventure.location}遇到了危险。`,
-          `虽然没能达成目标，但你安全返回了。`,
-          `这次冒险不太顺利，下次要更小心。`,
-        ];
-    return narratives[Math.floor(Math.random() * narratives.length)];
-  }
+  // ─── Choice ───
 
   /**
-   * Sync result generation (for RPC manual-complete without pre-provided result)
+   * Make a choice on an encounter.
    */
-  private _generateResultSync(adventure: Adventure): AdventureResult {
-    const success = this._rollSuccess(adventure);
-    const narrative = this._pickFallbackNarrative(adventure, success);
-    const rewards = this._calculateRewards(adventure, success);
-    return {
-      success,
-      narrative,
-      rewards,
-      damage: success ? undefined : 10,
-    };
+  makeChoice(adventureId: string, encounterId: string, choice: "a" | "b"): Adventure | { error: string } {
+    const adventure = this.adventures.get(adventureId);
+    if (!adventure) return { error: "Adventure not found" };
+    if (adventure.status !== "exploring") return { error: "Adventure not ongoing" };
+
+    const encounter = adventure.encounters.find((e) => e.id === encounterId);
+    if (!encounter) return { error: "Encounter not found" };
+    if (encounter.type !== "choice") return { error: "Not a choice encounter" };
+    if (encounter.selectedChoice) return { error: "Already chose" };
+    if (!encounter.triggeredAt) return { error: "Encounter not triggered yet" };
+
+    encounter.selectedChoice = choice;
+    encounter.resolvedAt = Date.now();
+    this.save();
+
+    return adventure;
   }
 
-  /**
-   * Cancel an ongoing adventure
-   */
+  // ─── Cancel ───
+
   cancelAdventure(adventureId: string): { ok: boolean; reason?: string } {
     const adventure = this.adventures.get(adventureId);
-    if (!adventure) {
-      return { ok: false, reason: "Adventure not found" };
-    }
+    if (!adventure) return { ok: false, reason: "Adventure not found" };
+    if (adventure.status !== "exploring") return { ok: false, reason: "Adventure not ongoing" };
 
-    if (adventure.status !== "ongoing") {
-      return { ok: false, reason: "Adventure not ongoing" };
-    }
-
-    adventure.status = "completed";
+    adventure.status = "cancelled";
     adventure.endedAt = Date.now();
     adventure.result = {
       success: false,
@@ -464,84 +493,305 @@ ${isInteractive
     this._completing = false;
     this.save();
 
-    this.bus.emit("adventure:cancelled", { adventure });
+    this.bus.emit("adventure:cancelled", { adventure: { id: adventure.id } });
 
     return { ok: true };
   }
 
+  // ─── Tick ───
+
   /**
-   * Tick - called periodically to check adventure completion.
-   * Uses async LLM path for richer narratives; _completing flag prevents double-trigger.
+   * Tick — called periodically by the engine.
+   * Checks encounter triggers, choice timeouts, and adventure completion.
    */
   tick(_deltaMs: number): void {
     if (!this.activeAdventureId || this._completing) return;
 
     const adventure = this.adventures.get(this.activeAdventureId);
-    if (!adventure || adventure.status !== "ongoing") return;
+    if (!adventure || adventure.status !== "exploring") return;
 
-    // Check if adventure duration has elapsed
-    const elapsedMs = Date.now() - (adventure.startedAt ?? adventure.createdAt);
-    const durationMs = adventure.duration * 60 * 1000;
+    const elapsedMs = Date.now() - adventure.startedAt;
+    const durationMs = adventure.card.duration * 60 * 1000;
+    let dirty = false;
 
+    // 1. Trigger pending encounters
+    while (adventure.nextEncounterIdx < adventure.encounters.length) {
+      const enc = adventure.encounters[adventure.nextEncounterIdx];
+      if (elapsedMs < enc.triggerAtMs) break;
+
+      enc.triggeredAt = Date.now();
+      adventure.nextEncounterIdx++;
+      dirty = true;
+
+      // Auto-resolve non-choice encounters
+      if (enc.type !== "choice") {
+        enc.resolvedAt = Date.now();
+      }
+
+      this.bus.emit("adventure:encounter", {
+        adventure: { id: adventure.id, location: adventure.card.location },
+        encounter: enc,
+      });
+    }
+
+    // 2. Check choice timeout (60s)
+    for (const enc of adventure.encounters) {
+      if (
+        enc.type === "choice" &&
+        enc.triggeredAt &&
+        !enc.selectedChoice &&
+        Date.now() - enc.triggeredAt >= CHOICE_TIMEOUT_MS
+      ) {
+        // Pet auto-decides
+        enc.selectedChoice = Math.random() < 0.5 ? "a" : "b";
+        enc.petDecided = true;
+        enc.resolvedAt = Date.now();
+        dirty = true;
+
+        this.bus.emit("adventure:encounter", {
+          adventure: { id: adventure.id, location: adventure.card.location },
+          encounter: enc,
+        });
+      }
+    }
+
+    // 3. Check adventure completion
     if (elapsedMs >= durationMs) {
+      // Ensure all encounters are triggered and resolved first
+      for (const enc of adventure.encounters) {
+        if (!enc.triggeredAt) {
+          enc.triggeredAt = Date.now();
+          if (enc.type !== "choice") enc.resolvedAt = Date.now();
+          adventure.nextEncounterIdx = adventure.encounters.indexOf(enc) + 1;
+          dirty = true;
+        }
+        if (enc.type === "choice" && !enc.selectedChoice) {
+          enc.selectedChoice = Math.random() < 0.5 ? "a" : "b";
+          enc.petDecided = true;
+          enc.resolvedAt = Date.now();
+          dirty = true;
+        }
+      }
+
       this._completing = true;
-      // Async path: try LLM narrative, then finalize
       void this._completeWithLLM(adventure.id).catch(() => {
-        // Absolute fallback: sync complete if async path explodes
-        if (adventure.status === "ongoing") {
-          this.completeAdventure(adventure.id);
+        if (adventure.status === "exploring") {
+          this._completeSync(adventure.id);
         }
       });
     }
+
+    if (dirty) this.save();
   }
 
-  /**
-   * Get adventure by ID
-   */
-  getAdventure(adventureId: string): Adventure | undefined {
-    return this.adventures.get(adventureId);
+  // ─── Completion ───
+
+  private async _completeWithLLM(adventureId: string): Promise<void> {
+    const adventure = this.adventures.get(adventureId);
+    if (!adventure || adventure.status !== "exploring") {
+      this._completing = false;
+      return;
+    }
+
+    const success = this._rollSuccess(adventure);
+    const rewards = this._calculateRewards(adventure, success);
+
+    let narrative: string | null = null;
+    if (this._llmComplete) {
+      try {
+        narrative = await this._generateSettlementNarrative(adventure, success);
+      } catch {
+        // fall through
+      }
+    }
+
+    if (!narrative) {
+      narrative = this._pickFallbackNarrative(adventure, success);
+    }
+
+    // Adventure may have been cancelled during LLM call
+    const current = this.adventures.get(adventureId);
+    if (!current || current.status !== "exploring") {
+      this._completing = false;
+      return;
+    }
+
+    this._finalize(adventureId, {
+      success,
+      narrative,
+      rewards,
+      damage: success ? undefined : 10,
+    });
   }
 
-  /**
-   * Get active adventure
-   */
+  private _completeSync(adventureId: string): void {
+    const adventure = this.adventures.get(adventureId);
+    if (!adventure || adventure.status !== "exploring") {
+      this._completing = false;
+      return;
+    }
+
+    const success = this._rollSuccess(adventure);
+    const narrative = this._pickFallbackNarrative(adventure, success);
+    const rewards = this._calculateRewards(adventure, success);
+
+    this._finalize(adventureId, {
+      success,
+      narrative,
+      rewards,
+      damage: success ? undefined : 10,
+    });
+  }
+
+  private _finalize(adventureId: string, result: AdventureResult): void {
+    const adventure = this.adventures.get(adventureId);
+    if (!adventure) {
+      this._completing = false;
+      return;
+    }
+
+    adventure.status = "completed";
+    adventure.endedAt = Date.now();
+    adventure.result = result;
+    this.activeAdventureId = null;
+    this._completing = false;
+    this.save();
+
+    this.bus.emit("adventure:completed", {
+      adventure: { id: adventure.id, location: adventure.card.location },
+      result,
+    });
+  }
+
+  private async _generateSettlementNarrative(adventure: Adventure, success: boolean): Promise<string | null> {
+    if (!this._llmComplete) return null;
+
+    const encounterSummary = adventure.encounters
+      .filter((e) => e.triggeredAt)
+      .map((e) => {
+        if (e.type === "choice") {
+          const choiceText = e.selectedChoice
+            ? (e.selectedChoice === "a" ? e.choices?.a : e.choices?.b) ?? "未知"
+            : "未选择";
+          return `遭遇抉择: ${e.text} → 选了"${choiceText}"${e.petDecided ? "(宠物自决)" : ""}`;
+        }
+        if (e.type === "discovery") return `发现: ${e.text}`;
+        return `途中: ${e.text}`;
+      })
+      .join("\n");
+
+    const prompt = `你是一个桌面宠物的探险叙事生成器。探险结束了，请生成结局叙事。
+
+探险信息：
+- 地点：${adventure.card.location}
+- 风险等级：${adventure.card.risk}星
+- 开场故事：${adventure.story || "无"}
+- 途中经历：
+${encounterSummary || "（无特殊事件）"}
+- 结果：${success ? "成功" : "失败"}
+
+要求：
+1. 用第二人称"你"叙述，语气生动有趣，3-4句话
+2. 结局要与开场故事和途中经历呼应
+3. 成功时描述收获和惊喜，失败时描述遗憾但要有鼓励
+4. 不要提及具体数值奖励
+
+只返回叙事文本，不要JSON包裹，不要引号。`;
+
+    const raw = await this._llmComplete(prompt);
+    if (!raw) return null;
+    const cleaned = raw.replace(/^["'`]+|["'`]+$/g, "").trim();
+    return cleaned.length > 10 ? cleaned : null;
+  }
+
+  private _rollSuccess(adventure: Adventure): boolean {
+    let chance = SUCCESS_RATES[adventure.card.risk];
+
+    // Choices affect success rate
+    for (const enc of adventure.encounters) {
+      if (enc.type === "choice" && enc.selectedChoice) {
+        // "a" is generally the safer option (+10%), "b" is riskier (-10%)
+        if (enc.selectedChoice === "a") chance += 0.1;
+        else chance -= 0.1;
+      }
+    }
+
+    return Math.random() < Math.min(1, Math.max(0, chance));
+  }
+
+  private _calculateRewards(adventure: Adventure, success: boolean): AdventureRewards {
+    const base = { ...BASE_REWARDS[adventure.card.risk] };
+
+    // Add discovery rewards
+    let bonusCoins = 0;
+    for (const enc of adventure.encounters) {
+      if (enc.type === "discovery" && enc.reward?.coins) {
+        bonusCoins += enc.reward.coins;
+      }
+    }
+
+    if (!success) {
+      return {
+        exp: Math.floor(base.exp * 0.3),
+        coins: Math.floor(base.coins * 0.3) + bonusCoins,
+      };
+    }
+
+    const rewards: AdventureRewards = {
+      exp: base.exp,
+      coins: base.coins + bonusCoins,
+    };
+
+    // Random item drop on success
+    if (Math.random() > 0.5) {
+      rewards.items = [RANDOM_ITEMS[Math.floor(Math.random() * RANDOM_ITEMS.length)]];
+    }
+
+    return rewards;
+  }
+
+  private _pickFallbackNarrative(adventure: Adventure, success: boolean): string {
+    const loc = adventure.card.location;
+    const narratives = success
+      ? [
+          `探险成功！你在${loc}发现了宝藏。`,
+          `经过一番探索，你安全返回，带回了不少收获。`,
+          `这次冒险虽然惊险，但结果令人满意。`,
+        ]
+      : [
+          `探险失败了，你在${loc}遇到了危险。`,
+          `虽然没能达成目标，但你安全返回了。`,
+          `这次冒险不太顺利，下次要更小心。`,
+        ];
+    return narratives[Math.floor(Math.random() * narratives.length)];
+  }
+
+  // ─── Queries ───
+
   getActiveAdventure(): Adventure | null {
     if (!this.activeAdventureId) return null;
     return this.adventures.get(this.activeAdventureId) ?? null;
   }
 
-  /**
-   * Get all adventures
-   */
-  getAdventures(): Adventure[] {
-    return Array.from(this.adventures.values()).sort((a, b) => b.createdAt - a.createdAt);
+  getAdventure(adventureId: string): Adventure | undefined {
+    return this.adventures.get(adventureId);
   }
 
-  /**
-   * Get adventure history
-   */
   getHistory(limit: number = 10): Adventure[] {
-    return this.getAdventures()
-      .filter((a) => a.status === "completed")
+    return Array.from(this.adventures.values())
+      .filter((a) => a.status === "completed" || a.status === "cancelled")
+      .sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt))
       .slice(0, limit);
   }
 
-  /**
-   * Get adventure stats
-   */
-  getStats(): {
-    total: number;
-    ongoing: number;
-    completed: number;
-    successRate: number;
-  } {
-    const all = this.getAdventures();
+  getStats(): { total: number; ongoing: number; completed: number; successRate: number } {
+    const all = Array.from(this.adventures.values());
     const completed = all.filter((a) => a.status === "completed");
     const successful = completed.filter((a) => a.result?.success);
 
     return {
       total: all.length,
-      ongoing: all.filter((a) => a.status === "ongoing").length,
+      ongoing: all.filter((a) => a.status === "exploring").length,
       completed: completed.length,
       successRate: completed.length > 0 ? successful.length / completed.length : 0,
     };
