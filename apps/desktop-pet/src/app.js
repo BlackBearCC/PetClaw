@@ -1216,15 +1216,20 @@ class PetClawPet {
   /**
    * 探险结算：服务端 tick 完成后推送，显示结果气泡 + 动画
    */
-  _handleAdventureCompleted({ success, location, rewards } = {}) {
+  _handleAdventureCompleted({ success, location, narrative, rewards } = {}) {
     const place = location || '探险';
     if (success) {
       this.stateMachine.transition('happy', { force: true, duration: 2000 });
       const rewardText = rewards?.exp ? ` +${rewards.exp}EXP` : '';
-      this.bubble.show(`${place}成功！${rewardText}`, 4000);
+      // Use LLM narrative if available, otherwise fallback
+      const text = narrative
+        ? `${narrative}${rewardText}`
+        : `${place}成功！${rewardText}`;
+      this.bubble.show(text, 6000);
     } else {
       this.stateMachine.transition('sad', { force: true, duration: 1500 });
-      this.bubble.show(`${place}失败了...`, 3000);
+      const text = narrative || `${place}失败了...`;
+      this.bubble.show(text, 5000);
     }
     // Steam Rich Presence: 探险结束回到 Idle
     this._steam?.setStatus('idle', { charName: '猫咪' });

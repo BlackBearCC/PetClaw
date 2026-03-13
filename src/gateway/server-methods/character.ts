@@ -465,6 +465,9 @@ ${conditions.map((c, i) => `${i + 1}. ${c}`).join('\n')}
       }
     });
 
+    // Wire up adventure LLM callback for story + narrative generation
+    engine.adventures.setLLMComplete(characterLLMComplete);
+
     // Register cron jobs for World Agent + Soul Agent (once per process lifetime)
     if (_cron && !cronJobsRegistered) {
       cronJobsRegistered = true;
@@ -638,9 +641,9 @@ CHARACTER_STATE.md 中有你当前的状态（心情/饱腹/健康/等级/亲密
 - 如果状态异常（很饿/心情低/身体不适）：用对应心情说话
 - 如果记得主人有重要的事：主动关心
 - 如果有世界事件（已在状态中）：自然地提及
-- 如果一切正常：说一句符合当前心情的日常话（撒娇/犯懒/发呆感想/哼歌等）
+- 如果一切正常且没有特别想说的：回复 HEARTBEAT_OK
 
-只输出要说的那句话。不要输出 JSON 或其他格式。保持简短自然，一两句话即可。`;
+只输出要说的那句话，或 HEARTBEAT_OK。不要输出 JSON 或其他格式。保持简短自然，一两句话即可。`;
 
 // ─── Register internal cron jobs for World/Soul Agent ───
 
@@ -675,10 +678,19 @@ async function registerCharacterCronJobs(cron: CronService): Promise<void> {
       _soulAgentJobId = (job as { id?: string })?.id ?? null;
       console.log("[character] registered Soul Agent cron job", _soulAgentJobId);
     } else {
-      // Already registered — resolve the ID from the existing list
-      const existing = ((page as { items?: Array<{ name?: string; id?: string }> }).items ?? [])
-        .find((j) => j.name === "Character Soul Agent");
+      // Already registered — resolve the ID and migrate delivery config if stale
+      const existing = (
+        (page as { jobs?: Array<{ name?: string; id?: string; delivery?: { mode?: string } }> }).jobs ?? []
+      ).find((j) => j.name === "Character Soul Agent");
       _soulAgentJobId = existing?.id ?? null;
+
+      // Migrate: old jobs may have delivery.mode="none", update to "announce"
+      if (_soulAgentJobId && existing?.delivery?.mode !== "announce") {
+        await cron.update(_soulAgentJobId, {
+          delivery: { mode: "announce", channel: "last" },
+        } as Parameters<typeof cron.update>[1]);
+        console.log("[character] migrated Soul Agent delivery to announce");
+      }
     }
   } catch (e) {
     console.error("[character] failed to register cron jobs:", e);
@@ -1250,7 +1262,15 @@ export const characterHandlers: GatewayRequestHandlers = {
       if ("error" in result) {
         (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.error));
       } else {
-        (respond as Function)(true, { ok: true, adventure: result });
+        // Generate LLM story + choices asynchronously, then respond with enriched adventure
+        void e.adventures.generateStory(result.id).then(() => {
+          // Re-fetch adventure to include LLM-generated story/choices
+          const enriched = e.adventures.getAdventure(result.id) ?? result;
+          (respond as Function)(true, { ok: true, adventure: enriched });
+        }).catch(() => {
+          // LLM failed — respond with original (no story)
+          (respond as Function)(true, { ok: true, adventure: result });
+        });
       }
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));

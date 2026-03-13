@@ -729,11 +729,16 @@ export class NurturingPanel {
     `;
 
     // 绑定开始按钮
-    body.querySelector('.nur-adv-start-btn').onclick = async () => {
+    const startBtn = body.querySelector('.nur-adv-start-btn');
+    startBtn.onclick = async () => {
       const type = body.querySelector('.nur-adv-type').value;
       const location = body.querySelector('.nur-adv-location').value || '未知地点';
       const duration = parseInt(body.querySelector('.nur-adv-duration').value) || 5;
       const risk = body.querySelector('.nur-adv-risk').value;
+
+      // Show loading state while LLM generates story
+      startBtn.disabled = true;
+      startBtn.textContent = '🔮 生成探险故事中...';
 
       try {
         const result = await this._rpc('character.adventure.start', {
@@ -748,9 +753,13 @@ export class NurturingPanel {
           await this._refresh();
         } else if (result?.error) {
           this._onBubble(result.error);
+          startBtn.disabled = false;
+          startBtn.textContent = '🚀 开始探险';
         }
       } catch (err) {
         this._onBubble('出发失败...');
+        startBtn.disabled = false;
+        startBtn.textContent = '🚀 开始探险';
       }
     };
   }
