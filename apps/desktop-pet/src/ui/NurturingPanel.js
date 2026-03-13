@@ -561,7 +561,18 @@ export class NurturingPanel {
     return parts.join(' · ') || '不限购';
   }
 
-  // ───────────────── Adventure ─────────────────
+  // ───────────────── Adventure (v2: Rumor Card + Encounter) ─────────────────
+
+  /** Theme → emoji mapping for rumor cards */
+  _themeEmoji(theme) {
+    const map = { forest: '🌲', ruin: '🏚️', water: '🌊', cave: '🕳️', town: '🏘️', sky: '☁️' };
+    return map[theme] || '🗺️';
+  }
+
+  /** Risk → star string */
+  _stars(risk) {
+    return '★'.repeat(risk) + '☆'.repeat(3 - risk);
+  }
 
   async _renderAdventure(body) {
     body.innerHTML = '<div class="nur-loading">加载中...</div>';
@@ -575,12 +586,12 @@ export class NurturingPanel {
       const stats = activeData?.stats || {};
       const history = historyData?.history || [];
 
-      if (active) {
-        // 有进行中的探险
+      if (active && active.status === 'exploring') {
         await this._renderActiveAdventure(body, active);
+      } else if (active && active.status === 'completed' && active.result) {
+        this._renderSettlement(body, active);
       } else {
-        // 没有探险，显示开始界面
-        await this._renderAdventureStart(body, stats, history);
+        await this._renderRumorBoard(body, stats, history);
       }
     } catch (err) {
       console.error('[nurturing] adventure error:', err);
@@ -588,147 +599,67 @@ export class NurturingPanel {
     }
   }
 
-  async _renderActiveAdventure(body, adventure) {
-    const elapsed = Math.floor((Date.now() - (adventure.startedAt || adventure.createdAt)) / 1000);
-    const remaining = Math.max(0, adventure.duration * 60 - elapsed);
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
+  // ── Rumor Board (no active adventure) ──
 
-    const riskLabels = { safe: '安全', moderate: '中等', dangerous: '危险' };
-    const riskColors = { safe: '#4ade80', moderate: '#fbbf24', dangerous: '#ef4444' };
-
-    let choicesHtml = '';
-    if (adventure.type === 'interactive' && adventure.choices?.length && !adventure.selectedChoice) {
-      choicesHtml = `
-        <div class="nur-adv-choices">
-          <div class="nur-adv-choices-title">做出选择：</div>
-          ${adventure.choices.map((c) => `
-            <button class="nur-adv-choice" data-choice-id="${c.id}">${this._esc(c.text)}</button>
-          `).join('')}
-        </div>
-      `;
-    } else if (adventure.selectedChoice) {
-      const chosen = adventure.choices?.find(c => c.id === adventure.selectedChoice);
-      choicesHtml = chosen
-        ? `<div class="nur-adv-chosen">已选择：${this._esc(chosen.text)}</div>`
-        : '';
-    }
-
+  async _renderRumorBoard(body, stats, history) {
+    // Show skeleton while loading rumors
     body.innerHTML = `
-      <div class="nur-adv-active">
-        <div class="nur-adv-header">
-          <span class="nur-adv-icon">🗺️</span>
-          <div class="nur-adv-title">${this._esc(adventure.location || '未知地点')}</div>
+      <div class="nur-adv-rumor-board">
+        <div class="nur-adv-board-header">
+          <span class="nur-adv-board-title">线索板</span>
+          <span class="nur-adv-board-count">${stats.total || 0} 次探险</span>
         </div>
-        <div class="nur-adv-info">
-          <div class="nur-adv-row">
-            <span class="nur-adv-label">类型</span>
-            <span class="nur-adv-value">${adventure.type === 'idle' ? '闲置' : adventure.type === 'interactive' ? '交互' : '探索'}</span>
-          </div>
-          <div class="nur-adv-row">
-            <span class="nur-adv-label">风险</span>
-            <span class="nur-adv-value" style="color: ${riskColors[adventure.risk] || '#fff'}">${riskLabels[adventure.risk] || adventure.risk}</span>
-          </div>
-          <div class="nur-adv-row">
-            <span class="nur-adv-label">剩余时间</span>
-            <span class="nur-adv-value nur-adv-timer">${mins}:${secs.toString().padStart(2, '0')}</span>
-          </div>
-        </div>
-        ${adventure.story ? `<div class="nur-adv-story">${this._esc(adventure.story)}</div>` : ''}
-        ${choicesHtml}
-        <div class="nur-adv-actions">
-          <button class="nur-adv-btn nur-adv-cancel" data-id="${adventure.id}">取消探险</button>
+        <div class="nur-adv-cards">
+          <div class="nur-adv-card nur-adv-card-skeleton"><div class="nur-shimmer"></div></div>
+          <div class="nur-adv-card nur-adv-card-skeleton"><div class="nur-shimmer"></div></div>
+          <div class="nur-adv-card nur-adv-card-skeleton"><div class="nur-shimmer"></div></div>
         </div>
       </div>
     `;
 
-    // 绑定选择按钮
-    body.querySelectorAll('.nur-adv-choice').forEach(btn => {
-      btn.onclick = async () => {
-        try {
-          const result = await this._rpc('character.adventure.choice', {
-            adventureId: adventure.id,
-            choiceId: btn.dataset.choiceId,
-          });
-          if (result?.ok) {
-            this._onBubble('做出选择了！');
-            await this._refresh();
-          }
-        } catch (err) {
-          this._onBubble('选择失败...');
-        }
-      };
-    });
+    // Fetch rumor cards (longer timeout for LLM generation)
+    let rumors = [];
+    try {
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000));
+      const result = await Promise.race([this._rawRpc('character.adventure.rumors', {}), timeout]);
+      rumors = result?.rumors || [];
+    } catch {
+      rumors = [];
+    }
 
-    // 绑定取消按钮
-    body.querySelector('.nur-adv-cancel').onclick = async () => {
-      try {
-        await this._rpc('character.adventure.cancel', { adventureId: adventure.id });
-        this._onBubble('取消了探险...');
-        await this._refresh();
-      } catch (err) {
-        this._onBubble('取消失败...');
-      }
-    };
-
-    // 自动刷新倒计时；归零后延迟 1.5s 等服务端 tick 完成再刷
-    setTimeout(() => {
-      if (this._activeTab === 'adventure' && this.isOpen) {
-        this._refresh();
-      }
-    }, remaining > 0 ? 1000 : 1500);
-  }
-
-  async _renderAdventureStart(body, stats, history) {
-    const successRate = stats.completed > 0 ? Math.round(stats.successRate * 100) : 0;
+    // Build cards HTML
+    const cardsHtml = rumors.length >= 3
+      ? rumors.map((card, i) => `
+          <div class="nur-adv-card nur-adv-card-theme-${this._esc(card.theme)} nur-adv-card-risk-${card.risk}"
+               data-card-id="${card.id}" style="animation-delay: ${i * 0.15}s">
+            <div class="nur-adv-card-hook">
+              <span class="nur-adv-card-emoji">${this._themeEmoji(card.theme)}</span>
+              ${this._esc(card.hook)}
+            </div>
+            <div class="nur-adv-card-meta">
+              <span class="nur-adv-card-stars">${this._stars(card.risk)}</span>
+              <span class="nur-adv-card-sep">&middot;</span>
+              <span class="nur-adv-card-duration">~${card.duration}分钟</span>
+            </div>
+          </div>
+        `).join('')
+      : '<div class="nur-empty">线索卡生成失败，请点击刷新重试</div>';
 
     body.innerHTML = `
-      <div class="nur-adv-start">
-        <div class="nur-adv-stats">
-          <div class="nur-adv-stat">
-            <span class="nur-adv-stat-val">${stats.total || 0}</span>
-            <span class="nur-adv-stat-label">总探险</span>
-          </div>
-          <div class="nur-adv-stat">
-            <span class="nur-adv-stat-val">${successRate}%</span>
-            <span class="nur-adv-stat-label">成功率</span>
-          </div>
+      <div class="nur-adv-rumor-board">
+        <div class="nur-adv-board-header">
+          <span class="nur-adv-board-title">线索板</span>
+          <span class="nur-adv-board-count">${stats.total || 0} 次探险</span>
         </div>
-
-        <div class="nur-adv-form">
-          <div class="nur-adv-form-row">
-            <label>类型</label>
-            <select class="nur-adv-type">
-              <option value="idle">闲置探险</option>
-              <option value="explore">主动探索</option>
-              <option value="interactive">交互探险</option>
-            </select>
-          </div>
-          <div class="nur-adv-form-row">
-            <label>地点</label>
-            <input type="text" class="nur-adv-location" placeholder="输入探险地点..." value="神秘森林">
-          </div>
-          <div class="nur-adv-form-row">
-            <label>时长(分钟)</label>
-            <input type="number" class="nur-adv-duration" min="1" max="60" value="5">
-          </div>
-          <div class="nur-adv-form-row">
-            <label>风险</label>
-            <select class="nur-adv-risk">
-              <option value="safe">安全 (90% 成功)</option>
-              <option value="moderate">中等 (70% 成功)</option>
-              <option value="dangerous">危险 (50% 成功)</option>
-            </select>
-          </div>
-          <button class="nur-adv-start-btn">🚀 开始探险</button>
-        </div>
-
+        <div class="nur-adv-cards">${cardsHtml}</div>
+        <button class="nur-adv-refresh-btn">🔄 换一批</button>
         ${history.length > 0 ? `
           <div class="nur-adv-history">
-            <div class="nur-adv-history-title">最近探险</div>
+            <div class="nur-adv-history-title">── 最近探险 ──</div>
             ${history.slice(0, 5).map(h => `
               <div class="nur-adv-history-item ${h.result?.success ? 'success' : 'fail'}">
-                <span class="nur-adv-hist-loc">${this._esc(h.location)}</span>
+                <span class="nur-adv-hist-loc">${this._esc(h.card?.location || '未知')}</span>
+                <span class="nur-adv-hist-reward">${h.result?.success ? `+${h.result.rewards?.exp || 0} EXP` : ''}</span>
                 <span class="nur-adv-hist-result">${h.result?.success ? '✓' : '✗'}</span>
               </div>
             `).join('')}
@@ -737,39 +668,252 @@ export class NurturingPanel {
       </div>
     `;
 
-    // 绑定开始按钮
-    const startBtn = body.querySelector('.nur-adv-start-btn');
-    startBtn.onclick = async () => {
-      const type = body.querySelector('.nur-adv-type').value;
-      const location = body.querySelector('.nur-adv-location').value || '未知地点';
-      const duration = parseInt(body.querySelector('.nur-adv-duration').value) || 5;
-      const risk = body.querySelector('.nur-adv-risk').value;
+    // Bind card clicks → start adventure
+    body.querySelectorAll('.nur-adv-card[data-card-id]').forEach(el => {
+      el.onclick = () => this._startFromCard(el.dataset.cardId, body);
+    });
 
-      // Show loading state while LLM generates story
-      startBtn.disabled = true;
-      startBtn.textContent = '🔮 生成探险故事中...';
+    // Bind refresh button
+    const refreshBtn = body.querySelector('.nur-adv-refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.onclick = async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '🔄 加载中...';
+        await this._refresh();
+      };
+    }
+  }
 
-      try {
-        const result = await this._rpc('character.adventure.start', {
-          type,
-          location,
-          duration,
-          risk,
-        });
+  async _startFromCard(cardId, body) {
+    // Show loading state on the clicked card
+    const card = body.querySelector(`[data-card-id="${cardId}"]`);
+    if (card) {
+      card.classList.add('nur-adv-card-loading');
+      card.innerHTML = '<div class="nur-shimmer"></div><div class="nur-adv-card-loading-text">生成探险故事中...</div>';
+    }
 
-        if (result?.ok) {
-          this._onBubble(`出发去${location}探险啦！`);
-          await this._refresh();
-        } else if (result?.error) {
-          this._onBubble(result.error);
-          startBtn.disabled = false;
-          startBtn.textContent = '🚀 开始探险';
-        }
-      } catch (err) {
-        this._onBubble('出发失败...');
-        startBtn.disabled = false;
-        startBtn.textContent = '🚀 开始探险';
+    try {
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 25000));
+      const result = await Promise.race([this._rawRpc('character.adventure.start', { cardId }), timeout]);
+
+      if (result?.ok) {
+        this._onBubble(`出发探险啦！`);
+        await this._refresh();
+      } else {
+        this._onBubble(result?.error || '出发失败...');
+        await this._refresh();
       }
+    } catch {
+      this._onBubble('出发失败...');
+      await this._refresh();
+    }
+  }
+
+  // ── Active Adventure (timeline view) ──
+
+  async _renderActiveAdventure(body, adventure) {
+    const card = adventure.card || {};
+    const elapsed = Math.floor((Date.now() - adventure.startedAt) / 1000);
+    const durationSec = (card.duration || 5) * 60;
+    const remaining = Math.max(0, durationSec - elapsed);
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    const progressPct = Math.min(100, Math.round((elapsed / durationSec) * 100));
+
+    // Build encounter timeline
+    const encounterNodes = (adventure.encounters || []).map((enc, i) => {
+      const isTriggered = !!enc.triggeredAt;
+      const isCurrent = isTriggered && enc.type === 'choice' && !enc.selectedChoice;
+      const isResolved = !!enc.resolvedAt || (enc.type !== 'choice' && isTriggered);
+
+      if (!isTriggered) {
+        // Not yet triggered
+        return `
+          <div class="nur-adv-tl-node nur-adv-tl-pending">
+            <div class="nur-adv-tl-dot nur-adv-tl-dot-empty"></div>
+            <div class="nur-adv-tl-card nur-adv-tl-card-pending">???</div>
+          </div>
+        `;
+      }
+
+      let nodeClass = 'nur-adv-tl-narration';
+      let dotClass = 'nur-adv-tl-dot-gray';
+      let cardContent = `<div class="nur-adv-tl-text">${this._esc(enc.text)}</div>`;
+
+      if (enc.type === 'discovery') {
+        nodeClass = 'nur-adv-tl-discovery';
+        dotClass = 'nur-adv-tl-dot-gold';
+        const rewardText = enc.reward?.coins ? `+${enc.reward.coins} 🪙` : '';
+        const itemText = enc.reward?.item ? ` 🎁 ${this._esc(enc.reward.item)}` : '';
+        cardContent = `
+          <div class="nur-adv-tl-text">${this._esc(enc.text)}</div>
+          ${rewardText || itemText ? `<div class="nur-adv-tl-reward">${rewardText}${itemText}</div>` : ''}
+        `;
+      } else if (enc.type === 'choice') {
+        if (isCurrent) {
+          // Awaiting player choice
+          nodeClass = 'nur-adv-tl-choice-pending';
+          dotClass = 'nur-adv-tl-dot-pulse';
+          const choiceTimeLeft = enc.triggeredAt ? Math.max(0, 60 - Math.floor((Date.now() - enc.triggeredAt) / 1000)) : 60;
+          cardContent = `
+            <div class="nur-adv-tl-text">${this._esc(enc.text)}</div>
+            <div class="nur-adv-tl-countdown">${choiceTimeLeft}s</div>
+            <div class="nur-adv-tl-choices">
+              <button class="nur-adv-tl-choice-btn" data-enc-id="${enc.id}" data-choice="a">${this._esc(enc.choices?.a || 'A')}</button>
+              <button class="nur-adv-tl-choice-btn" data-enc-id="${enc.id}" data-choice="b">${this._esc(enc.choices?.b || 'B')}</button>
+            </div>
+          `;
+        } else {
+          // Already chosen
+          nodeClass = 'nur-adv-tl-choice-done';
+          dotClass = 'nur-adv-tl-dot-green';
+          const selA = enc.selectedChoice === 'a';
+          cardContent = `
+            <div class="nur-adv-tl-text">${this._esc(enc.text)}</div>
+            <div class="nur-adv-tl-choices-done">
+              <span class="nur-adv-tl-opt ${selA ? 'nur-adv-tl-opt-sel' : 'nur-adv-tl-opt-dim'}">${this._esc(enc.choices?.a || 'A')}</span>
+              <span class="nur-adv-tl-opt ${!selA ? 'nur-adv-tl-opt-sel' : 'nur-adv-tl-opt-dim'}">${this._esc(enc.choices?.b || 'B')}</span>
+            </div>
+            ${enc.petDecided ? '<div class="nur-adv-tl-pet-decided">宠物自己选的</div>' : ''}
+          `;
+        }
+      }
+
+      return `
+        <div class="nur-adv-tl-node ${nodeClass}">
+          <div class="nur-adv-tl-dot ${dotClass}"></div>
+          <div class="nur-adv-tl-card">${cardContent}</div>
+        </div>
+      `;
+    }).join('');
+
+    body.innerHTML = `
+      <div class="nur-adv-active">
+        <div class="nur-adv-active-header">
+          <div class="nur-adv-active-title">
+            <span>${this._themeEmoji(card.theme)} ${this._esc(card.location || '未知地点')}</span>
+            <span class="nur-adv-active-stars">${this._stars(card.risk || 1)}</span>
+          </div>
+          <div class="nur-adv-active-timer">${mins}:${secs.toString().padStart(2, '0')}</div>
+          <div class="nur-adv-progress-track">
+            <div class="nur-adv-progress-fill" style="width:${progressPct}%"></div>
+          </div>
+        </div>
+
+        <div class="nur-adv-timeline">
+          ${adventure.story ? `
+            <div class="nur-adv-tl-node nur-adv-tl-start">
+              <div class="nur-adv-tl-dot nur-adv-tl-dot-gray"></div>
+              <div class="nur-adv-tl-card nur-adv-tl-card-story">${this._esc(adventure.story)}</div>
+            </div>
+          ` : ''}
+          ${encounterNodes}
+          <div class="nur-adv-tl-node nur-adv-tl-end">
+            <div class="nur-adv-tl-dot nur-adv-tl-dot-end"></div>
+            <div class="nur-adv-tl-card nur-adv-tl-card-pending">结算</div>
+          </div>
+        </div>
+
+        <button class="nur-adv-cancel-btn" data-id="${adventure.id}">取消探险</button>
+      </div>
+    `;
+
+    // Bind choice buttons
+    body.querySelectorAll('.nur-adv-tl-choice-btn').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          const result = await this._rpc('character.adventure.choice', {
+            adventureId: adventure.id,
+            encounterId: btn.dataset.encId,
+            choice: btn.dataset.choice,
+          });
+          if (result?.ok) {
+            this._onBubble('做出了选择！');
+            await this._refresh();
+          }
+        } catch {
+          this._onBubble('选择失败...');
+        }
+      };
+    });
+
+    // Bind cancel button
+    const cancelBtn = body.querySelector('.nur-adv-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.onclick = async () => {
+        try {
+          await this._rpc('character.adventure.cancel', { adventureId: adventure.id });
+          this._onBubble('取消了探险...');
+          await this._refresh();
+        } catch {
+          this._onBubble('取消失败...');
+        }
+      };
+    }
+
+    // Auto-refresh (1s for countdown, 1.5s delay after completion for tick to settle)
+    this._advRefreshTimer = setTimeout(() => {
+      if (this._activeTab === 'adventure' && this.isOpen) {
+        this._refresh();
+      }
+    }, remaining > 0 ? 1000 : 1500);
+  }
+
+  // ── Settlement View ──
+
+  _renderSettlement(body, adventure) {
+    const result = adventure.result;
+    const card = adventure.card || {};
+    const rewardParts = [];
+    if (result.rewards?.exp) rewardParts.push(`+${result.rewards.exp} EXP`);
+    if (result.rewards?.coins) rewardParts.push(`+${result.rewards.coins} 🪙`);
+    if (result.rewards?.items?.length) {
+      for (const item of result.rewards.items) rewardParts.push(`🎁 ${this._esc(item)}`);
+    }
+
+    body.innerHTML = `
+      <div class="nur-adv-active">
+        <div class="nur-adv-active-header">
+          <div class="nur-adv-active-title">
+            <span>${this._themeEmoji(card.theme)} ${this._esc(card.location || '未知地点')}</span>
+            <span class="nur-adv-active-stars">${this._stars(card.risk || 1)}</span>
+          </div>
+        </div>
+
+        <div class="nur-adv-timeline">
+          ${adventure.story ? `
+            <div class="nur-adv-tl-node nur-adv-tl-start">
+              <div class="nur-adv-tl-dot nur-adv-tl-dot-gray"></div>
+              <div class="nur-adv-tl-card nur-adv-tl-card-story">${this._esc(adventure.story)}</div>
+            </div>
+          ` : ''}
+          ${(adventure.encounters || []).filter(e => e.triggeredAt).map(enc => {
+            let dotClass = 'nur-adv-tl-dot-gray';
+            if (enc.type === 'discovery') dotClass = 'nur-adv-tl-dot-gold';
+            else if (enc.type === 'choice') dotClass = 'nur-adv-tl-dot-green';
+            return `
+              <div class="nur-adv-tl-node">
+                <div class="nur-adv-tl-dot ${dotClass}"></div>
+                <div class="nur-adv-tl-card"><div class="nur-adv-tl-text">${this._esc(enc.text)}</div></div>
+              </div>
+            `;
+          }).join('')}
+          <div class="nur-adv-tl-node nur-adv-tl-settlement">
+            <div class="nur-adv-tl-dot nur-adv-tl-dot-diamond"></div>
+            <div class="nur-adv-tl-card nur-adv-tl-card-settlement">
+              <div class="nur-adv-settle-title">${result.success ? '🎉 探险成功！' : '💫 探险结束'}</div>
+              <div class="nur-adv-settle-narrative">${this._esc(result.narrative)}</div>
+              ${rewardParts.length ? `<div class="nur-adv-settle-rewards">${rewardParts.join(' &middot; ')}</div>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <button class="nur-adv-back-btn">返回线索板</button>
+      </div>
+    `;
+
+    body.querySelector('.nur-adv-back-btn').onclick = async () => {
+      await this._refresh();
     };
   }
 

@@ -529,6 +529,17 @@ ${conditions.map((c, i) => `${i + 1}. ${c}`).join('\n')}
       _broadcast("character", { kind: "chat-eval", ...(data as object) }, { dropIfSlow: true });
     });
 
+    // Broadcast adventure encounter events → client shows timeline update + bubble
+    engine.bus.on("adventure:encounter", (data) => {
+      if (!_broadcast) return;
+      _broadcast("character", {
+        kind: "adventure-encounter",
+        adventureId: data.adventure.id,
+        location: data.adventure.location,
+        encounter: data.encounter,
+      }, { dropIfSlow: false });
+    });
+
     // Grant rewards + broadcast adventure completion → client shows result bubble + animation
     engine.bus.on("adventure:completed", (data) => {
       if (!engine) return;
@@ -1272,45 +1283,41 @@ export const characterHandlers: GatewayRequestHandlers = {
     return { ...result, stats: e.todos.getStats() };
   }),
 
-  // ── Adventure System ──
+  // ── Adventure System (v2: Rumor Card + Encounter) ──
+
+  "character.adventure.rumors": ({ respond }) => {
+    try {
+      const e = getEngine();
+      void e.adventures.generateRumors().then((rumors) => {
+        (respond as Function)(true, { rumors });
+      }).catch((err) => {
+        (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+      });
+    } catch (err) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
 
   "character.adventure.start": ({ params, respond }) => {
-    const type = params?.type as string;
-    const location = params?.location as string;
-    const duration = params?.duration as number;
-    const risk = params?.risk as string;
-    const story = params?.story as string;
-    const choices = params?.choices as Array<{ id: string; text: string }>;
+    const cardId = params?.cardId as string;
 
-    if (!type || !location || !duration || !risk) {
-      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing required params"));
+    if (!cardId) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'cardId' param"));
       return;
     }
 
     try {
       const e = getEngine();
-      const result = e.adventures.startAdventure({
-        type: type as "idle" | "interactive" | "explore",
-        location,
-        duration,
-        risk: risk as "safe" | "moderate" | "dangerous",
-        story,
-        choices,
-      });
-
-      if ("error" in result) {
-        (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.error));
-      } else {
-        // Generate LLM story + choices asynchronously, then respond with enriched adventure
-        void e.adventures.generateStory(result.id).then(() => {
-          // Re-fetch adventure to include LLM-generated story/choices
-          const enriched = e.adventures.getAdventure(result.id) ?? result;
-          (respond as Function)(true, { ok: true, adventure: enriched });
-        }).catch(() => {
-          // LLM failed — respond with original (no story)
+      // startAdventure is async: generates story + encounters via LLM, then responds
+      void e.adventures.startAdventure(cardId).then((result) => {
+        if ("error" in result) {
+          (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.error));
+        } else {
           (respond as Function)(true, { ok: true, adventure: result });
-        });
-      }
+        }
+      }).catch((err) => {
+        (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+      });
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
@@ -1318,45 +1325,22 @@ export const characterHandlers: GatewayRequestHandlers = {
 
   "character.adventure.choice": ({ params, respond }) => {
     const adventureId = params?.adventureId as string;
-    const choiceId = params?.choiceId as string;
+    const encounterId = params?.encounterId as string;
+    const choice = params?.choice as "a" | "b";
 
-    if (!adventureId || !choiceId) {
-      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing required params"));
+    if (!adventureId || !encounterId || !choice) {
+      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing required params (adventureId, encounterId, choice)"));
       return;
     }
 
     try {
       const e = getEngine();
-      const result = e.adventures.makeChoice(adventureId, choiceId);
+      const result = e.adventures.makeChoice(adventureId, encounterId, choice);
 
       if ("error" in result) {
         (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.error));
       } else {
         (respond as Function)(true, { ok: true, adventure: result });
-      }
-    } catch (err) {
-      (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
-    }
-  },
-
-  "character.adventure.complete": ({ params, respond }) => {
-    const adventureId = params?.adventureId as string;
-    const result = params?.result as { success: boolean; narrative: string; rewards: { exp: number; coins: number } };
-
-    if (!adventureId) {
-      (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "missing 'adventureId' param"));
-      return;
-    }
-
-    try {
-      const e = getEngine();
-      const advResult = e.adventures.completeAdventure(adventureId, result);
-
-      if ("error" in advResult) {
-        (respond as Function)(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, advResult.error));
-      } else {
-        // Rewards are granted via the adventure:completed bus listener (covers both RPC and tick paths)
-        (respond as Function)(true, { ok: true, adventure: advResult });
       }
     } catch (err) {
       (respond as Function)(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
