@@ -758,17 +758,12 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
    * Index MemoryGraph cluster data into SQLite chunks + FTS.
    * Each cluster becomes one chunk with source="clusters".
    * Works without embedding provider (FTS-only mode).
+   * Incremental: only upserts the provided clusters (no full wipe).
    */
   indexClusters(clusters: MemoryClusterInput[]): void {
     if (!clusters.length) return;
 
     const now = Date.now();
-
-    // Clear old cluster data
-    this.db.prepare(`DELETE FROM chunks WHERE source = 'clusters'`).run();
-    if (this.fts.enabled && this.fts.available) {
-      this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE source = 'clusters'`).run();
-    }
 
     for (const cluster of clusters) {
       // Build searchable text: theme + keywords + implicitKeywords + summary + fragments
@@ -786,9 +781,10 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
         .filter(Boolean)
         .join("\n");
 
+      // Use a stable id based on cluster.id so upserts hit the same row
       const path = `clusters/${cluster.id}`;
+      const id = hashText(`clusters:${path}:${cluster.id}`);
       const hash = hashText(text);
-      const id = hashText(`clusters:${path}:${cluster.id}:${hash}`);
 
       this.db
         .prepare(
@@ -803,6 +799,8 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
         .run(id, path, "clusters", 0, 0, hash, "clusters", text, "[]", now);
 
       if (this.fts.enabled && this.fts.available) {
+        // Delete old FTS entry for this cluster, then re-insert
+        this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE path = ?`).run(path);
         this.db
           .prepare(
             `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)` +
@@ -812,7 +810,7 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
       }
     }
 
-    log.info(`Indexed ${clusters.length} memory clusters`);
+    log.info(`Indexed ${clusters.length} memory cluster(s)`);
   }
 
   async close(): Promise<void> {

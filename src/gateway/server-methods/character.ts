@@ -164,7 +164,7 @@ async function characterLLMComplete(prompt: string): Promise<string | null> {
         model: llmCfg.model,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 1024,
-        temperature: 0.85,
+        temperature: 0.3,
         stream: false,
         enable_thinking: false,
       }),

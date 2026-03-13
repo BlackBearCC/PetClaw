@@ -12,7 +12,6 @@
  */
 
 import type { PersistenceStore } from "./attribute-engine.js";
-import type { EventBus } from "./event-bus.js";
 
 // ─── Types ───
 
@@ -107,11 +106,13 @@ export class MemoryGraphSystem {
   private _data: MemoryGraphData;
   private _busy = false;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private _pendingUserMsg: string | null = null;
-  private _pendingAiReply: string | null = null;
+  private _queue: Array<{ userMsg: string; aiReply: string }> = [];
   private _llmComplete: LLMCompleteCallback | null = null;
   private _onIndexClusters: ((clusters: MemoryCluster[]) => void) | null = null;
   private _onExtracted: MemoryExtractedCallback | null = null;
+  private _errorCount = 0;
+  /** ID of the cluster that was created or updated in the last extraction */
+  private _lastChangedClusterId: string | null = null;
 
   constructor(store: PersistenceStore) {
     this._store = store;
@@ -123,7 +124,7 @@ export class MemoryGraphSystem {
     this._llmComplete = callback;
   }
 
-  /** Register the cluster indexing callback (called after extraction) */
+  /** Register the cluster indexing callback (called after extraction with changed clusters only) */
   setIndexCallback(callback: (clusters: MemoryCluster[]) => void): void {
     this._onIndexClusters = callback;
   }
@@ -158,29 +159,30 @@ export class MemoryGraphSystem {
   /**
    * Enqueue extraction with debounce (3s).
    * Called after each chat completion via character.memory.extract RPC.
+   * Uses a queue so rapid-fire messages are never lost.
    */
   enqueueExtraction(userMsg: string, aiReply: string): void {
     if ((!userMsg && !aiReply) || (userMsg + aiReply).length < 10) return;
-    this._pendingUserMsg = userMsg;
-    this._pendingAiReply = aiReply;
+    this._queue.push({ userMsg, aiReply });
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
-    this._debounceTimer = setTimeout(() => this._doExtract(), DEBOUNCE_MS);
+    this._debounceTimer = setTimeout(() => this._drainQueue(), DEBOUNCE_MS);
   }
 
-  private async _doExtract(): Promise<void> {
-    const userMsg = this._pendingUserMsg;
-    const aiReply = this._pendingAiReply;
-    this._pendingUserMsg = null;
-    this._pendingAiReply = null;
-    if ((!userMsg && !aiReply) || this._busy) return;
-    await this.extractAndMerge(userMsg ?? "", aiReply ?? "");
+  private async _drainQueue(): Promise<void> {
+    if (this._busy || this._queue.length === 0) return;
+    const item = this._queue.shift()!;
+    await this.extractAndMerge(item.userMsg, item.aiReply);
+    // If more items remain, schedule next extraction
+    if (this._queue.length > 0) {
+      this._debounceTimer = setTimeout(() => this._drainQueue(), DEBOUNCE_MS);
+    }
   }
 
   // ─── LLM extraction ───
 
   async extractAndMerge(userMsg: string, aiReply: string): Promise<void> {
     if (this._busy) {
-      console.log("[MemoryGraph] Busy, skipping extraction");
+      console.log("[MemoryGraph] Busy, queued for later");
       return;
     }
     if (!this._llmComplete) {
@@ -188,6 +190,7 @@ export class MemoryGraphSystem {
       return;
     }
     this._busy = true;
+    this._lastChangedClusterId = null;
     try {
       const themes = this.getClusters().map(c => c.theme).join("、");
 
@@ -218,37 +221,50 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 
       const match = result.match(/\{[\s\S]*\}/);
       if (!match) {
-        console.log("[MemoryGraph] No JSON found in result");
+        console.warn("[MemoryGraph] No JSON found in LLM result:", result.slice(0, 300));
+        this._errorCount++;
         return;
       }
 
-      const parsed = JSON.parse(match[0]);
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch (parseErr) {
+        console.warn("[MemoryGraph] JSON parse failed:", parseErr, "raw:", match[0].slice(0, 200));
+        this._errorCount++;
+        return;
+      }
       console.log("[MemoryGraph] Parsed:", JSON.stringify(parsed));
       if (!parsed.worth) {
         console.log("[MemoryGraph] Not worth remembering");
         return;
       }
 
-      this._merge(parsed, userMsg, aiReply);
+      this._merge(parsed as Parameters<typeof this._merge>[0], userMsg, aiReply);
       this._prune();
       this._data.meta.extractCount++;
       this._data.meta.lastExtractAt = Date.now();
       this._save();
 
-      // Index clusters into memory search
+      // Index only the changed cluster into memory search
       this._indexToMemorySearch();
 
       // Notify callback (for first-time experience)
-      if (this._onExtracted) {
-        const latestCluster = this.getClusters()[this.getClusters().length - 1];
-        if (latestCluster) {
-          this._onExtracted(latestCluster);
+      if (this._onExtracted && this._lastChangedClusterId) {
+        const changedCluster = this._data.clusters[this._lastChangedClusterId];
+        if (changedCluster) {
+          this._onExtracted(changedCluster);
         }
       }
-    } catch {
-      // Silent fail — memory extraction is non-critical
+    } catch (err) {
+      this._errorCount++;
+      console.warn("[MemoryGraph] Extraction failed (total errors: %d):", this._errorCount, err);
     } finally {
       this._busy = false;
+      // Continue draining queue if items remain
+      if (this._queue.length > 0) {
+        this._debounceTimer = setTimeout(() => this._drainQueue(), DEBOUNCE_MS);
+      }
     }
   }
 
@@ -293,6 +309,7 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
         const ikwSet = new Set(existing.implicitKeywords);
         for (const kw of implicitKeywords) ikwSet.add(kw.toLowerCase());
         existing.implicitKeywords = [...ikwSet].slice(0, 20);
+        this._lastChangedClusterId = existing.id;
         return;
       }
       // Fall through to create new cluster
@@ -312,38 +329,29 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
       updatedAt: now,
     };
     this._data.clusters[id] = newCluster;
+    this._lastChangedClusterId = id;
     this._inferRelations(newCluster);
   }
 
   private _findClusterByTheme(theme: string): MemoryCluster | undefined {
     const lower = theme.toLowerCase().trim();
-    // Normalize all cluster themes once to avoid repeated toLowerCase/trim per pass
     const norm = Object.values(this._data.clusters).map(c => ({ c, cl: c.theme.toLowerCase().trim() }));
 
     // 1. Exact match
     const exact = norm.find(({ cl }) => cl === lower);
     if (exact) return exact.c;
 
-    // 2. Substring containment — shorter must be at least 2 chars to avoid false hits
-    if (lower.length >= 2) {
+    // 2. Substring containment — both sides must be ≥3 chars to avoid
+    //    short themes like "AI" matching unrelated clusters ("AI绘画" vs "AI编程")
+    if (lower.length >= 3) {
       const contained = norm.find(({ cl }) =>
-        cl.length >= 2 && (cl.includes(lower) || lower.includes(cl))
+        cl.length >= 3 && (cl.includes(lower) || lower.includes(cl))
       );
       if (contained) return contained.c;
     }
 
-    // 3. Character-set overlap ratio (good for Chinese, catches paraphrase)
-    const newChars = new Set([...lower]);
-    let bestCluster: MemoryCluster | undefined;
-    let bestScore = 0;
-    for (const { c, cl } of norm) {
-      const clChars = new Set([...cl]);
-      const intersection = [...newChars].filter(ch => clChars.has(ch)).length;
-      const score = intersection / Math.max(newChars.size, clChars.size);
-      if (score > bestScore) { bestScore = score; bestCluster = c; }
-    }
-    // Threshold 0.7: at least 70% character overlap
-    return bestScore >= 0.7 ? bestCluster : undefined;
+    // No fuzzy character-overlap matching — trust LLM's cluster field instead
+    return undefined;
   }
 
   private _inferRelations(newCluster: MemoryCluster): void {
@@ -364,13 +372,28 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 
   // ─── Prune ───
 
+  /**
+   * Prune clusters when exceeding MAX_CLUSTERS.
+   * Score = weight × timeDecay, where decay halves every 30 days of inactivity.
+   * This prevents high-weight but stale clusters from hogging slots forever,
+   * while keeping recent one-time important memories alive.
+   */
   private _prune(): void {
     const clusters = Object.values(this._data.clusters);
     if (clusters.length <= MAX_CLUSTERS) return;
 
-    clusters.sort((a, b) => a.weight - b.weight);
-    const toRemove = clusters.slice(0, clusters.length - MAX_CLUSTERS);
-    const removeIds = new Set(toRemove.map(c => c.id));
+    const now = Date.now();
+    const HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+    const scored = clusters.map(c => {
+      const age = now - c.updatedAt;
+      const decay = Math.pow(0.5, age / HALF_LIFE_MS);
+      return { c, score: c.weight * decay };
+    });
+
+    scored.sort((a, b) => a.score - b.score);
+    const toRemove = scored.slice(0, scored.length - MAX_CLUSTERS);
+    const removeIds = new Set(toRemove.map(s => s.c.id));
 
     for (const id of removeIds) {
       delete this._data.clusters[id];
@@ -422,14 +445,15 @@ keywords=对话中直接出现的词；implicitKeywords=未直接出现但语义
 
   // ─── Index to memory search ───
 
+  /** Only send the cluster that was created/updated, not the full set */
   private _indexToMemorySearch(): void {
-    if (!this._onIndexClusters) return;
-    const clusters = this.getClusters();
-    if (clusters.length === 0) return;
+    if (!this._onIndexClusters || !this._lastChangedClusterId) return;
+    const changed = this._data.clusters[this._lastChangedClusterId];
+    if (!changed) return;
     try {
-      this._onIndexClusters(clusters);
-    } catch {
-      // Silent fail — indexing is best-effort
+      this._onIndexClusters([changed]);
+    } catch (err) {
+      console.warn("[MemoryGraph] indexClusters failed:", err);
     }
   }
 
