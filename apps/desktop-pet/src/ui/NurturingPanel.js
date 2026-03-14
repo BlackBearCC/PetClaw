@@ -298,7 +298,7 @@ export class NurturingPanel {
         const rewardStr = this._formatReward(t.reward);
 
         return `
-          <div class="nur-task-card ${isDone ? 'nur-task-done' : ''}">
+          <div class="nur-task-card">
             <div class="nur-task-icon"><img src="${icon}" alt="${t.difficulty}"></div>
             <div class="nur-task-body">
               <div class="nur-task-name">${this._esc(t.name)}</div>

@@ -2781,7 +2781,7 @@ body.panels-right .md-panel {
   position: relative;
 }
 .nur-task-card.nur-task-done {
-  opacity: 0.65;
+  opacity: 1;
 }
 .nur-task-icon {
   width: 32px;
