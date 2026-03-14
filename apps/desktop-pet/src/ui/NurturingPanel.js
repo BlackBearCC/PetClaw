@@ -197,7 +197,7 @@ export class NurturingPanel {
         <div class="nur-exp-track">
           <div class="nur-exp-fill" style="width:${pct}%"></div>
         </div>
-        <div class="nur-exp-text">${levelInfo.exp} / ${levelInfo.expToNext} EXP</div>
+        <div class="nur-exp-text">${levelInfo.exp - levelInfo.currentLevelExp} / ${levelInfo.expToNext - levelInfo.currentLevelExp} EXP</div>
       `;
     } catch (err) {
       console.warn('[nurturing] level bar error:', err);
