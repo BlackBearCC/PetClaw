@@ -185,8 +185,10 @@ export class NurturingPanel {
         this._rpc('character.level.info'),
         this._rpc('character.daily.streak'),
       ]);
-      const pct = levelInfo.expToNext > 0
-        ? Math.round(((levelInfo.exp - levelInfo.currentLevelExp) / (levelInfo.expToNext - levelInfo.currentLevelExp)) * 100)
+      const levelProgress = levelInfo.exp - (levelInfo.currentLevelExp || 0);
+      const levelTotal = (levelInfo.nextLevelExp || 0) - (levelInfo.currentLevelExp || 0);
+      const pct = levelTotal > 0
+        ? Math.min(100, Math.round((levelProgress / levelTotal) * 100))
         : 100;
       bar.innerHTML = `
         <div class="nur-level-info">
@@ -197,7 +199,7 @@ export class NurturingPanel {
         <div class="nur-exp-track">
           <div class="nur-exp-fill" style="width:${pct}%"></div>
         </div>
-        <div class="nur-exp-text">${levelInfo.exp - levelInfo.currentLevelExp} / ${levelInfo.expToNext - levelInfo.currentLevelExp} EXP</div>
+        <div class="nur-exp-text">${levelProgress} / ${levelTotal} EXP</div>
       `;
     } catch (err) {
       console.warn('[nurturing] level bar error:', err);
